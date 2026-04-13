@@ -1,0 +1,1951 @@
+## [2026-04-12 22:57] [code]
+- **Change**: 为 same_person 的自动图片候选增加分辨率比例过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的自动候选路径，在已有时间窗口、视频时长和结构化人物冲突过滤之外，图片候选还会校验分辨率比例。现在即使图片 embedding 接近，如果一张接近原图、一张接近极小缩略图，也不会继续并入同一人的自动候选，目标是降低缩略图误召回风险。主要风险是少量真实同人但尺寸差异特别大的图片召回会下降，但该改动只影响自动候选路径，目标是进一步压低误判；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 17:18] [code]
+- **Change**: 为 same_person 的视频候选增加画幅比例兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的视频候选路径。现在无论是 AI 大候选集还是弱自动信号，在视频方向一致的前提下，还会继续校验画幅比例兼容性，避免 `16:9` 与 `5:4` 这类差异明显的视频仅凭 embedding 接近就并入同一人的候选，目标是进一步降低视频误召回风险。主要风险是少量真实同人但被强裁切或重构图的视频召回会下降，但该改动只影响 AI 和 auto 的视频候选收口，不影响 human 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 17:10] [code]
+- **Change**: 为 same_series 的视频候选增加画幅比例兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_series 的视频候选路径。现在在视频方向一致的前提下，还会继续校验画幅比例兼容性，避免 `16:9` 与 `4:3` 这类差异明显的视频仅凭关键帧重合或 embedding 接近就并成同一系列，目标是进一步降低视频误并风险。主要风险是少量真实同系列但被强裁切或重构图的视频召回会下降，但 same_series 的目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 17:03] [code]
+- **Change**: 为 same_content 的视频候选增加画幅比例兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_content 的视频候选路径。现在在视频方向一致的前提下，还会继续校验画幅比例兼容性，避免 `16:9` 与 `4:3` 这类差异明显的视频仅凭关键帧相似或 embedding 接近就并成同内容，目标是进一步降低视频误并风险。主要风险是少量真实同内容但经历了强裁切或重构图的视频召回会下降，但这类素材更接近衍生版本，不适合默认直接并入同内容；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:55] [code]
+- **Change**: 修正 same_content 图片锚点过滤对候选顺序敏感的问题
+- **Risk Analysis**: 本次改动修正了 same_content 图片方向与尺寸过滤依赖候选返回顺序的问题。现在无论是图片 pHash 路径还是图片 embedding 路径，方向、纵横比和分辨率过滤都会使用真实文件分辨率作为锚点，而不是从候选列表中猜测带尺寸的项，避免 portrait 候选排在前面时把真实 landscape 锚点反向过滤掉；同时保留了“锚点尺寸缺失时不过度过滤”的行为，避免误伤仅靠候选尺寸做排序的旧场景。主要风险是 samecontent 图片链路的调用签名发生变化，若锚点字段缺失可能导致过滤放宽或收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:49] [code]
+- **Change**: 修正 same_content 视频方向过滤对候选顺序敏感的问题
+- **Risk Analysis**: 本次改动修正了 same_content 视频方向过滤依赖候选返回顺序的问题。现在视频方向兼容性会使用真实文件分辨率作为锚点，而不是从候选列表中猜测首个带尺寸的结果，避免 portrait 候选排在前面时把真实 landscape 锚点反向过滤掉。主要风险是 GetFileHash 查询和扫描顺序发生变化，若字段映射不一致会影响 samecontent 视频链路；samecontent 包测试、Postgres 相关测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:41] [code]
+- **Change**: 为 same_person 的视频候选增加画幅方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的视频候选路径。现在无论是 AI 大候选集还是弱自动信号，只要候选与锚点的画幅方向明显冲突，例如横屏对竖屏，并且双方存在分辨率信息，就不会继续并入同一人的候选，目标是降低不同构图视频被误召回的风险。主要风险是少量真实同人但被重新裁切成不同方向的视频召回会下降，但该改动只影响 AI 和 auto 的视频候选收口，不影响 human 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:34] [code]
+- **Change**: 为 same_series 的视频候选增加画幅方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_series 的视频候选路径。现在即使关键帧 pHash 或视频 embedding 足够接近，只要候选与锚点的画幅方向明显冲突，例如横屏对竖屏，并且双方存在分辨率信息，就不会继续并入同一系列，目标是降低不同构图视频被误并成同一系列的风险。主要风险是少量真实同系列但被重新裁切成不同方向的视频召回会下降，但 same_series 的目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:27] [code]
+- **Change**: 为 same_content 的视频候选增加画幅方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_content 的视频候选路径。现在即使关键帧 pHash 或视频 embedding 足够接近，只要候选与锚点的画幅方向明显冲突，例如横屏对竖屏，并且双方存在分辨率信息，就不会继续并入同内容聚类，目标是降低不同构图视频的误并风险。主要风险是少量真实同内容但被重新裁切成不同方向的视频召回会下降，但这类素材更接近片段或衍生版本，不宜默认直接并入同内容；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:20] [code]
+- **Change**: 为 same_person 的 AI 大候选集增加图片方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的 AI 标签收口路径。现在当 AI `person` 标签命中过大的候选集时，图片候选除了 embedding 命中外，还会校验方向、纵横比和分辨率兼容性，避免横图和竖图这类明显冲突的图片仅凭近似向量被保留下来；同时仍允许缺少尺寸信息的 family 或 parent 候选继续参与。主要风险是少量真实同人但构图差异很大的图片召回会下降，但该改动只影响 AI 大候选收口，不影响 human 标签和已存在的自动人物候选路径；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:14] [code]
+- **Change**: 为 same_content 的图片 pHash 候选增加方向和纵横比过滤
+- **Risk Analysis**: 本次改动继续收紧 same_content 的图片 pHash 兜底路径。现在即使图片 pHash 足够接近，如果候选与锚点在方向或纵横比上明显冲突，例如横图对竖图，也不会继续并入同内容聚类，目标是降低图片 pHash 误并风险。这里刻意没有增加分辨率比例过滤，因为 same_content 需要保留“同内容不同质量版本”的聚类能力；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:02] [code]
+- **Change**: 为 same_person 的自动图片候选增加纵横比兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的自动图片候选路径。现在即使 embedding 接近，如果锚点和候选在图片方向与纵横比上明显冲突，例如横图与竖图，也不会继续并入同一人的候选，目标是降低构图明显不同图片的误召回风险。主要风险是少量真实同人但构图差异很大的图片召回会下降，但该改动只影响 same_person 的自动候选路径，不影响显式 human person 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:48] [code]
+- **Change**: 为 same_series 的图片候选增加分辨率比例过滤
+- **Risk Analysis**: 本次改动让 same_series 在处理图片候选时也会校验分辨率比例。现在即使同目录、同文件名家族且 embedding 接近，如果一张是原图、一张接近极小缩略图，也不会直接并入同一系列，目标是降低缩略图误并风险。主要风险是少量真实同系列但尺寸差异特别大的图片召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:42] [code]
+- **Change**: 为 same_series 的图片候选增加纵横比兼容性过滤
+- **Risk Analysis**: 本次改动让 same_series 在处理图片候选时也会校验纵横比兼容性。现在即使同目录、同文件名家族且 embedding 接近，如果图片在构图上明显冲突，例如横图与竖图，也不会直接并入同一系列，目标是降低不同构图素材被误并的风险。主要风险是少量真实同系列但裁切差异较大的图片召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:33] [code]
+- **Change**: 为 same_person 的弱自动视频候选增加时长兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的弱自动信号路径，在已有时间窗口、人物形态和 capture_type 冲突过滤之外，视频候选还会校验时长兼容性。现在即使 embedding 接近，如果视频时长差过大，也不会继续并入同一人的弱自动候选，目标是降低长视频、短片段和无关视频被误召回的风险。主要风险是少量真实同人但时长差异很大的视频召回会下降，但该改动只影响弱自动信号路径，目标是进一步压低误判；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:24] [code]
+- **Change**: 为 same_series 的视频候选增加时长兼容性过滤
+- **Risk Analysis**: 本次改动让 same_series 在处理视频候选时也会校验时长兼容性。现在即使关键帧 pHash 或 embedding 接近，如果时长差过大，也不会直接并入同一系列，目标是降低长视频、短片段和不同版本素材被误并的风险。主要风险是少量真实同系列但时长差异较大的视频召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:17] [code]
+- **Change**: 为 same_content 的视频关键帧 pHash 路径增加时长兼容性过滤
+- **Risk Analysis**: 本次改动把 same_content 视频路径的时长兼容性过滤从 embedding 兜底扩展到了关键帧 pHash 命中路径。现在即使关键帧 pHash 有重合，如果视频时长差过大，也不会直接并为同内容，目标是继续降低长短视频、剪辑片段和不同版本混并的风险。主要风险是少量真实同内容但时长差异较大的样本召回会下降，但这属于有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:10] [code]
+- **Change**: 为 same_content 的图片 embedding 兜底路径增加分辨率比例过滤
+- **Risk Analysis**: 本次改动只作用于 same_content 的图片 embedding 兜底路径，不影响 sha256 完全重复和图片 pHash 命中路径。现在即使图片 embedding 接近，如果分辨率比例差距过大，例如原图与极小缩略图，也不会仅凭 embedding 被并为同内容，目标是降低缩略图误并风险。主要风险是少量真实同内容但尺寸差异特别大的图片召回会下降，但这是有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 22:03] [code]
+- **Change**: 为 same_series 增加 capture_type 冲突过滤
+- **Risk Analysis**: 本次改动让 same_series 在判断候选时也会参考 understanding 的 capture_type。现在如果候选和锚点在拍摄形态上明显冲突，例如 `photo` 与 `screenshot`，即使同目录且同文件名家族，也不会直接并入同一系列。主要风险是少量真实同系列但 capture_type 识别不稳定的样本召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 21:51] [code]
+- **Change**: 为 same_person 弱自动信号增加 capture_type 冲突过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的弱自动信号路径，在已有时间窗口和人物形态冲突过滤之外，如果候选和锚点在 capture_type 上明显冲突，例如 `selfie` 与 `screenshot`，就会被直接剔除。主要风险是少量真实同人但 capture_type 识别不稳定的样本会降低召回，但该改动只影响弱自动信号路径，目标是继续压低误判；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 21:43] [code]
+- **Change**: 为 same_content 的图片 embedding 兜底路径增加纵横比兼容性过滤
+- **Risk Analysis**: 本次改动只作用于 same_content 的图片 embedding 兜底路径，不影响 sha256 完全重复和图片 pHash 命中路径。现在即使图片 embedding 接近，如果纵横比明显冲突，也不会仅凭 embedding 被并为同内容，目标是降低横图/竖图、不同构图素材被误并的风险。主要风险是少量真实同内容但裁切差异较大的图片召回会下降，但这是有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 21:35] [code]
+- **Change**: 为 same_content 的视频 embedding 兜底路径增加时长兼容性过滤
+- **Risk Analysis**: 本次改动只作用于 same_content 的视频 embedding 兜底路径，不影响 sha256 完全重复和关键帧 pHash 命中路径。现在即使关键帧 embedding 相似，如果视频时长差过大，也不会仅凭 embedding 被并为同内容，目标是降低长短视频、剪辑片段和不同版本混并的风险。主要风险是少量真实同内容但时长差异较大的样本会降低召回，但这是有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-09 16:55] [Feature]
+- **Change**: 完善本地离线媒体治理系统设计文档，补充 AI worker、聚类、关键帧、质量评分、扫描、删除、Schema、任务调度和 Web IA 规则
+- **Risk Analysis**: 当前变更主要是设计文档扩展，没有实现代码风险较低；主要风险在于部分规则仍属第一版设计决策，后续落地时可能需要根据真实样本微调，尤其是聚类阈值、质量评分细则和任务调度参数。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+----------------------------------------
+## [2026-04-12 00:35] [code]
+- **Change**: 收紧 same_series 跨目录同 family 候选的时间窗口，避免误并不同批次素材
+- **Risk Analysis**: 本次改动只影响 same_series 的跨目录 family 候选，对于同 family 且技术特征接近的素材，新增了时间窗口约束，避免把同名但跨很久的不同批次内容并成同一系列。主要风险是少量真实跨目录但时间较远的同系列素材召回会下降，但这符合 same_series 保守建组的设计目标；全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 00:29] [code]
+- **Change**: 将时间邻近性纳入 same_person 候选打分，优先同批次素材
+- **Risk Analysis**: 本次改动没有扩大 same_person 的召回范围，只是在已有候选内增加了时间邻近性打分，让更接近同一拍摄批次的候选排得更靠前。主要风险是组内排序会发生变化，但这种变化属于预期优化，且不会影响人工标签或聚类边界；全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 00:24] [code]
+- **Change**: 为 same_person 弱自动信号增加结构化人物形态冲突过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的弱自动信号路径，在已有时间窗口约束之外，如果候选和锚点在 `subject_count` 等结构化人物形态上明显冲突，就会直接剔除。主要风险是个别真实同人但标签/属性识别不稳定的样本会降低召回，但这类改动只作用于弱自动信号，目标是显著压低误判；全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 00:18] [code]
+- **Change**: 让 same_person 真正读取并利用结构化人物信号参与候选打分
+- **Risk Analysis**: 本次改动把 `has_face`、`subject_count`、`capture_type` 从 understanding 结果接入 same_person 的文件上下文与候选数据，并纳入候选分数计算。主要风险是部分候选的 score 排序会变化，但这属于预期收敛，且不会扩大召回范围，只会让更像人物素材的候选排得更靠前；sameperson 和全仓回归均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 00:12] [code]
+- **Change**: 收紧 same_person 弱自动信号的时间窗口，避免仅凭 embedding 跨长时间误并组
+- **Risk Analysis**: 本次改动只影响 `same_person` 的弱自动信号路径，对 `情侣 / 多人 / AV / 做爱 / 口交` 这类信号增加了时间窗口约束，避免仅凭 embedding 把相隔很久的素材并入同一候选组。主要风险是少量真实跨时间同人素材会降低召回，但这类损失是有意换取更低误判率，且现有 sameperson 全量测试和全仓回归已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:36] [code]
+- **Change**: 为 embeddings 增加最新读取索引和 ivfflat 向量索引 migration
+- **Risk Analysis**: 本次改动新增了 `0002_embedding_indexes.sql`，为 file/frame 维度的最新向量读取补 BTree 索引，并为 `image_visual`、`video_frame_visual` 增加 `ivfflat` 距离索引。主要风险在于不同 PostgreSQL/pgvector 环境上的建索引耗时和参数适配，但改动只影响 migration，不改变运行时代码路径，且相关依赖包测试已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `db/migrations/0002_embedding_indexes.sql`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:31] [code]
+- **Change**: 增加视频关键帧预览接口并在文件详情中直接展示关键帧图片
+- **Risk Analysis**: 本次改动新增了 `/api/files/{id}/frames/{index}/preview`，文件详情里的关键帧摘要现在可直接显示帧图。风险主要在于路径解析与原有 `/content`、`/preview` 路由可能冲突，但本次实现单独做了路径分支和 HTTP 测试验证，且只复用现有文件流式返回逻辑，不改变其他接口契约。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/files/files.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `internal/app/app_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:23] [code]
+- **Change**: 在文件详情中暴露视频关键帧摘要，并补强视频质量评分规则
+- **Risk Analysis**: 本次改动为文件详情新增了视频关键帧摘要返回与展示，同时扩展了质量评估逻辑，让视频评分额外纳入 fps、时长、codec 和 container。主要风险是 quality 分数与历史结果相比会有一定漂移，但评分规则仍然简单明确，且只会影响排序与推荐，不会直接触发删除动作；相关 quality/files/httpserver 测试已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `internal/quality/service.go`
+- `internal/quality/service_test.go`
+- `internal/quality/postgres.go`
+- `internal/quality/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:12] [code]
+- **Change**: 补强视频详情元数据并将 same_content 视频保留建议纳入码率/FPS/容器信号
+- **Risk Analysis**: 本次改动把视频的 fps、bitrate、video_codec、audio_codec 接入了文件详情接口和前端展示，同时扩展了 same_content 的视频排序规则，在原有 quality_score、分辨率、时长、大小基础上纳入码率、帧率和容器权重。主要风险是部分历史重复组的推荐保留顺序会发生变化，但排序逻辑仍然保持简单可解释，且已通过 samecontent/files/httpserver 的测试和全量回归。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/service_test.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 17:02] [Feature]
+- **Change**: 新增本地离线媒体治理系统 SQL Schema v1 文档，并同步更新总设计文档中的未决项
+- **Risk Analysis**: 本次变更为设计文档补充，未引入运行时代码；主要风险在于 SQL 草案中的向量维度、索引策略和部分关系表仍需结合真实实现与样本量进一步校准。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-sql-schema-v1.md`
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+----------------------------------------
+## [2026-04-09 17:06] [Feature]
+- **Change**: 新增本地离线媒体治理系统 Provider Adapter v1 文档，并同步更新总设计文档未决项
+- **Risk Analysis**: 本次变更为接口设计文档补充，未涉及运行时代码；主要风险在于首版选择 stdio JSON lines 和具体 Provider API 适配方式，落地时仍需结合 Ollama 与 LM Studio 的真实返回格式做细节校准。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-provider-adapter-v1.md`
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+----------------------------------------
+## [2026-04-09 17:08] [Feature]
+- **Change**: 新增本地离线媒体治理系统 标签生成规则 v1 文档，并同步更新总设计文档未决项
+- **Risk Analysis**: 本次变更为标签规则设计文档补充，未涉及运行时代码；主要风险在于实际模型输出可能与设计中的理想层次存在偏差，落地时需要基于真实样本继续微调 prompt、同义归一和 structured_attributes 映射规则。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-tagging-rules-v1.md`
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+----------------------------------------
+## [2026-04-09 17:10] [Feature]
+- **Change**: 新增本地离线媒体治理系统 关键帧抽取算法 v1 文档，并同步更新总设计文档未决项
+- **Risk Analysis**: 本次变更为关键帧算法设计文档补充，未涉及运行时代码；主要风险在于真实视频样本分布可能导致抽帧预算、废帧过滤阈值和理解帧选择策略需要进一步基于样本调整。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-keyframe-algorithm-v1.md`
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+----------------------------------------
+## [2026-04-09 17:13] [Feature]
+- **Change**: 新增本地离线媒体治理系统 聚类规则 v1 文档，并同步更新总设计文档未决项
+- **Risk Analysis**: 本次变更为聚类规则设计文档补充，未涉及运行时代码；主要风险在于实际样本会影响 same_content、same_person、same_series 的阈值和候选召回表现，落地时仍需结合真实数据做阈值微调。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-clustering-rules-v1.md`
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+----------------------------------------
+## [2026-04-09 17:19] [Feature]
+- **Change**: 新增本地离线媒体治理系统 Web IA v1 文档与初始 SQL migration，并收敛总设计文档未决项
+- **Risk Analysis**: 本次变更形成了较完整的设计与初始 migration 基础，未引入运行时代码；主要风险在于 migration 尚未在真实 PostgreSQL 环境执行验证，且 pgvector 向量维度、索引策略与部分约束仍需结合实际实现继续收紧。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-web-ia-v1.md`
+- `/Users/zhangyukun/project/idea/docs/superpowers/specs/2026-04-09-local-media-governance-design.md`
+- `/Users/zhangyukun/project/idea/db/migrations/0001_init.sql`
+----------------------------------------
+## [2026-04-09 17:24] [Feature]
+- **Change**: 初始化本地离线媒体治理系统工程骨架，增加 Go 主服务最小实现、Python worker 协议骨架、初始 migration、README 与测试
+- **Risk Analysis**: 当前已形成可运行的最小骨架，但仍未接入真实 PostgreSQL、任务队列、Ollama/LM Studio 调用和前端工程；主要风险在于后续接入数据库和真实 provider 时接口细节可能需要调整，不过当前边界已经足够支撑下一轮迭代。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/go.mod`
+- `/Users/zhangyukun/project/idea/internal/config/config.go`
+- `/Users/zhangyukun/project/idea/internal/config/config_test.go`
+- `/Users/zhangyukun/project/idea/internal/httpserver/httpserver.go`
+- `/Users/zhangyukun/project/idea/internal/app/app.go`
+- `/Users/zhangyukun/project/idea/internal/app/app_test.go`
+- `/Users/zhangyukun/project/idea/cmd/server/main.go`
+- `/Users/zhangyukun/project/idea/worker/main.py`
+- `/Users/zhangyukun/project/idea/worker/worker_test.py`
+- `/Users/zhangyukun/project/idea/README.md`
+- `/Users/zhangyukun/project/idea/.gitignore`
+- `/Users/zhangyukun/project/idea/db/migrations/0001_init.sql`
+----------------------------------------
+## [2026-04-09 17:35] [Feature]
+- **Change**: 扩展工程骨架，增加数据库 migration runner、workerclient、任务摘要领域模型与 /api/task-summary 接口，并更新 README
+- **Risk Analysis**: 当前后端已具备配置、健康检查、worker 协议、migration 骨架和最小任务摘要接口，但仍未接入真实 PostgreSQL、真实任务存储和真实 provider 推理；主要风险在于后续接入数据库与长驻 worker 时需要处理更多生命周期和错误恢复细节，不过当前结构已经足够支撑下一轮实装。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `/Users/zhangyukun/project/idea/internal/config/config.go`
+- `/Users/zhangyukun/project/idea/internal/config/config_test.go`
+- `/Users/zhangyukun/project/idea/internal/database/database.go`
+- `/Users/zhangyukun/project/idea/internal/database/database_test.go`
+- `/Users/zhangyukun/project/idea/internal/app/app.go`
+- `/Users/zhangyukun/project/idea/internal/app/app_test.go`
+- `/Users/zhangyukun/project/idea/internal/httpserver/httpserver.go`
+- `/Users/zhangyukun/project/idea/internal/httpserver/httpserver_test.go`
+- `/Users/zhangyukun/project/idea/internal/tasks/tasks.go`
+- `/Users/zhangyukun/project/idea/internal/tasks/tasks_test.go`
+- `/Users/zhangyukun/project/idea/internal/workerclient/client.go`
+- `/Users/zhangyukun/project/idea/internal/workerclient/client_test.go`
+- `/Users/zhangyukun/project/idea/README.md`
+----------------------------------------
+## [2026-04-09 17:53] [feat]
+- **Change**: 增加可选 PostgreSQL 任务摘要接入与装配
+- **Risk Analysis**: EnableDatabase 路径只做了编译和单元测试，尚未在真实 PostgreSQL 实例上验证；开启后如果数据库不可达，/api/task-summary 会返回运行时错误。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/tasks/tasks.go`
+- `internal/tasks/tasks_test.go`
+- `internal/config/config.go`
+- `internal/config/config_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `internal/database/sql.go`
+- `internal/database/sql_test.go`
+- `cmd/server/main.go`
+- `README.md`
+- `go.mod`
+- `go.sum`
+----------------------------------------
+## [2026-04-09 18:01] [feat]
+- **Change**: 增加任务列表接口与首页最近任务面板
+- **Risk Analysis**: 当前 /api/jobs 只支持只读列表和基础状态过滤，尚未实现任务写入、重试、事件日志联动；真实数据库上的排序和扫描行为还未做集成验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/tasks/jobs.go`
+- `internal/tasks/jobs_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `internal/httpserver/assets/app.js`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 18:10] [feat]
+- **Change**: 增加任务入队与失败任务重试接口
+- **Risk Analysis**: 当前任务创建和重试接口只覆盖 jobs 表本身，没有联动 job_events、权限校验或更细的状态机约束；真实数据库上尚未做集成验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/tasks/jobs.go`
+- `internal/tasks/jobs_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 18:18] [feat]
+- **Change**: 增加任务事件时间线接口与首页时间线面板
+- **Risk Analysis**: 任务事件目前只在创建和重试时记录简单 info 文本，尚未覆盖任务执行全过程，也没有事务保障 jobs 与 job_events 的一致性；真实数据库联调仍未完成。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/tasks/job_events.go`
+- `internal/tasks/job_events_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `internal/httpserver/assets/app.js`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 18:29] [feat]
+- **Change**: 增加后台 job runner 与任务失败重试交互
+- **Risk Analysis**: 当前后台 runner 使用开发期 NoopExecutor，只会成功处理少数占位任务并让未注册任务失败；runner 使用进程内 goroutine 启动，尚未做优雅停机和真实 PostgreSQL 集成验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/config/config.go`
+- `internal/config/config_test.go`
+- `internal/jobrunner/runner.go`
+- `internal/jobrunner/runner_test.go`
+- `internal/tasks/jobs.go`
+- `internal/tasks/jobs_test.go`
+- `internal/tasks/job_events.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/queue_store_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-09 19:07] [Feature]
+- **Change**: 增加扫描后幂等下发提取任务并实现图片视频基础特征提取
+- **Risk Analysis**: 扫描阶段现在会根据文件变化下发 extract_image_features 和 extract_video_features，并由 runner 直接写入 image_assets/video_assets；主要风险在于真实 PostgreSQL 与 ffprobe 环境尚未联调，HEIC 等非常见格式当前只保留最小信息，视频探测失败时的降级策略仍较保守。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/service_test.go`
+- `internal/mediaextract/postgres.go`
+- `internal/mediaextract/postgres_test.go`
+- `internal/mediaextract/ffprobe.go`
+- `internal/scanner/service.go`
+- `internal/scanner/service_test.go`
+- `internal/scanner/postgres.go`
+- `internal/scanner/postgres_test.go`
+- `internal/tasks/jobs.go`
+- `internal/tasks/jobs_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/tasks_test.go`
+- `README.md`
+- `go.mod`
+- `go.sum`
+----------------------------------------
+## [2026-04-09 19:09] [Feature]
+- **Change**: 增加最近文件提取结果展示并扩展文件查询接口
+- **Risk Analysis**: files 查询现在会联表返回 image_assets 和 video_assets 的基础元数据，首页 Recent Files 面板也会显示尺寸、格式和时长；主要风险在于真实数据库数据量较大时联表查询可能需要进一步索引优化，前端当前仍是静态脚本，未覆盖更复杂的筛选交互测试。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+----------------------------------------
+## [2026-04-09 19:27] [Feature]
+- **Change**: 增加搜索文档生成链路并支持最近文件全文搜索
+- **Risk Analysis**: extract 成功后现在会幂等下发 recompute_search_doc，搜索文档由 files 与 asset 元数据拼装并写入 search_documents，同时 /api/files 支持 q 参数、首页增加搜索框；主要风险在于真实 PostgreSQL 的 tsquery 表现和中文分词能力还未验证，目前使用 simple 配置，复杂搜索语义后面可能需要调整。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/service_test.go`
+- `internal/searchdoc/service.go`
+- `internal/searchdoc/service_test.go`
+- `internal/searchdoc/postgres.go`
+- `internal/searchdoc/postgres_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `internal/httpserver/assets/app.js`
+- `README.md`
+----------------------------------------
+## [2026-04-09 19:32] [Feature]
+- **Change**: 扩展最近文件筛选参数并接通首页结构化筛选控件
+- **Risk Analysis**: 现在 /api/files 除全文搜索外还支持 media_type、status、volume_id 三个结构化筛选，首页也增加了对应控件；主要风险在于当前仍是最近文件视图，没有分页和排序，筛选条件增多后在真实大数据量下可能需要进一步做查询计划和索引验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 19:34] [Feature]
+- **Change**: 增加最近文件分页排序能力并扩展结构化筛选工作台
+- **Risk Analysis**: 现在 /api/files 额外支持 offset 和 sort，首页 Recent Files 增加排序下拉和 Load More，自动刷新也会保持当前可见范围；主要风险在于当前分页仍是 offset 模式，大数据量下性能可能不如 cursor，并且前端还没有独立资源浏览页。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 19:39] [Feature]
+- **Change**: 增加单文件详情接口并接通最近文件详情面板
+- **Risk Analysis**: 现在后端新增 /api/files/{id}，会返回文件基础信息和 file_path_history，首页点击文件即可查看详情和路径历史；主要风险在于当前详情仍是轻量版本，还没有 analysis_results、标签和聚类信息，前端也还是单页静态面板。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `internal/httpserver/assets/app.js`
+- `README.md`
+----------------------------------------
+## [2026-04-09 19:53] [Feature]
+- **Change**: 打通 infer_tags 理解链路并在文件详情展示 AI 标签
+- **Risk Analysis**: 新增 understand 服务与 Postgres store，extract 后会幂等下发 infer_tags，worker 占位返回理解结果，系统会写入 understanding 分析结果和 AI 标签，并在文件详情接口与页面展示；主要风险在于当前 understand_media 仍是占位实现，标签质量和结构化属性还没有接入真实视觉模型。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/understand/service.go`
+- `internal/understand/postgres.go`
+- `internal/understand/worker.go`
+- `internal/understand/service_test.go`
+- `internal/understand/postgres_test.go`
+- `internal/workerclient/client.go`
+- `internal/workerclient/client_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/service_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/queue_store_test.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `cmd/server/main.go`
+- `worker/main.py`
+- `worker/worker_test.py`
+- `README.md`
+----------------------------------------
+## [2026-04-09 19:58] [Feature]
+- **Change**: 为 worker 增加真实 provider 适配并支持按标签筛选文件
+- **Risk Analysis**: Python worker 现在可按环境变量切换 placeholder、Ollama、LM Studio，并在 provider 调用失败时自动回退；同时 /api/files 与首页文件面板新增 tag 精确筛选。主要风险在于 provider 集成目前只做了协议级实现和单元测试，还没有和真实 Ollama/LM Studio 实例做联调。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `worker/main.py`
+- `worker/worker_test.py`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:04] [Feature]
+- **Change**: 增加标签列表接口和首页 Top Tags 面板
+- **Risk Analysis**: 新增 /api/tags 接口、tags 存储查询和 App/Main 装配，首页会展示 Top Tags 并支持点击标签回填到文件筛选；主要风险在于当前标签列表只按 file_tags 数量做简单排序，还没有 namespace 分组视图和更复杂的聚合统计。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/tags/store.go`
+- `internal/tags/store_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:07] [Feature]
+- **Change**: 为文件列表增加标签摘要并补充 Top Tags namespace 切换
+- **Risk Analysis**: 文件列表接口现在会返回每个文件的标签摘要，首页文件卡片直接显示标签；Top Tags 面板新增 namespace 过滤下拉，点击标签仍可直接回填文件筛选。主要风险在于标签摘要目前只取前 3 个标签，且仍是简单展示，没有做 namespace 着色或优先级定制。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:11] [Feature]
+- **Change**: 增加文件移入 macOS 废纸篓的后端链路和详情页按钮
+- **Risk Analysis**: 新增 trash 服务、Postgres 状态更新和 /api/files/{id}/trash 接口，文件详情页现在可直接触发移入 macOS 废纸篓并把文件状态标记为 trashed；主要风险在于 macOS mover 目前依赖 osascript/Finder，在无图形会话或权限受限环境下可能失败。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/trash/service.go`
+- `internal/trash/postgres.go`
+- `internal/trash/macos.go`
+- `internal/trash/service_test.go`
+- `internal/trash/postgres_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:16] [feat]
+- **Change**: 接入质量分析任务并把结果写入主执行链路
+- **Risk Analysis**: 当前质量评分仍是基础规则，真实样本下可能需要调整阈值和摘要表达。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/quality/service.go`
+- `internal/quality/postgres.go`
+- `internal/mediaextract/service.go`
+- `internal/jobexecutor/executor.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:26] [feat]
+- **Change**: 增强资源浏览筛选并暴露质量等级与质量分数
+- **Risk Analysis**: 当前质量排序和筛选依赖最新 quality 分析结果，老数据未跑质量任务时会显示为空。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:34] [feat]
+- **Change**: 增加人工动作写入与按最新动作筛选的资源浏览能力
+- **Risk Analysis**: 最新动作筛选只看最近一条 review_actions 记录，复杂多次操作的业务解释仍需后续明确。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/review/service.go`
+- `internal/review/service_test.go`
+- `internal/review/postgres.go`
+- `internal/review/postgres_test.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/app/app.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:42] [feat]
+- **Change**: 增加候选聚类只读接口并在首页展示最近候选组
+- **Risk Analysis**: 当前 cluster 只实现只读展示，自动聚类写入链路仍未接入，页面可能长期为空直到后端开始产出数据。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/app/app.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:45] [feat]
+- **Change**: 增加 hash_file 任务并计算文件 sha256 与 quick_hash
+- **Risk Analysis**: 当前哈希计算会读取文件内容，首次大盘扫描时磁盘 IO 成本会上升，后续需要结合调度限流观察吞吐。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/filehash/service.go`
+- `internal/filehash/service_test.go`
+- `internal/filehash/postgres.go`
+- `internal/filehash/postgres_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/queue_store_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-09 20:48] [feat]
+- **Change**: 增加基于 sha256 的 same_content 自动候选聚类
+- **Risk Analysis**: 当前 same_content 只覆盖完全重复文件，且唯一键暂时依赖 hash 前缀标题，后续需要更稳的分组标识与清理策略。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/filehash/service.go`
+- `internal/filehash/service_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/queue_store_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 09:29] [feat]
+- **Change**: 补齐 same_series 自动聚类、聚类级人工动作，以及文件详情中的聚类归属展示，完成当前版本候选审核闭环。
+- **Risk Analysis**: same_series 当前仅基于同目录、同媒体类型和修改时间窗口，准确率偏保守，且暂不清理历史脏聚类；same_person 仍未实现。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- (未检测到变更文件或当前目录非 git 仓库)
+----------------------------------------
+## [2026-04-10 09:41] [feat]
+- **Change**: 补充候选治理驾驶舱摘要、聚类与文件之间的跳转交互，以及在 Finder 中定位文件的能力，进一步降低人工审核成本。
+- **Risk Analysis**: Finder 定位仅适用于 macOS 且依赖 open -R；聚类摘要当前只统计数据库已有聚类，不包含尚未生成的待处理文件。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- (未检测到变更文件或当前目录非 git 仓库)
+----------------------------------------
+## [2026-04-10 09:44] [feat]
+- **Change**: 补齐聚类状态流转，支持 candidate、confirmed、ignored，并将聚类审核从仅打文件动作推进到完整候选收口。
+- **Risk Analysis**: 当前聚类状态更新是独立于文件级动作的，确认或忽略聚类不会自动回写成员文件标签；真正的业务闭环仍依赖人工审核流程。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- (未检测到变更文件或当前目录非 git 仓库)
+----------------------------------------
+## [2026-04-10 09:50] [feat]
+- **Change**: 补齐自动聚类的失效收缩逻辑，并为文件浏览增加按聚类归属筛选，避免候选列表积累脏数据。
+- **Risk Analysis**: same_content 和 same_series 现在会在候选不足时自动将已有聚类置为 ignored，但这依赖后续任务再次命中该文件触发重算，不是全库主动清扫。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- (未检测到变更文件或当前目录非 git 仓库)
+----------------------------------------
+## [2026-04-10 09:51] [feat]
+- **Change**: 补充环境模板和 Makefile，统一本地开发、联调和测试入口，减少手工命令成本。
+- **Risk Analysis**: Makefile 只封装当前已有命令，不负责依赖安装；db-dev 和 db-migrate 仍然依赖本机 PostgreSQL 和模型服务已经就绪。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- (未检测到变更文件或当前目录非 git 仓库)
+----------------------------------------
+## [2026-04-10 10:03] [Feature]
+- **Change**: 新增系统状态探针与 same_person 标签聚类闭环
+- **Risk Analysis**: 主要风险在于 readyz 语义变化可能影响旧脚本，以及 same_person 当前仅依赖 person 标签，召回率受模型标签质量影响；另外 cluster_same_person 新任务已接入队列，需要关注数据库真实联调时的任务堆积与重复触发。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `internal/database/checker.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `internal/systemstatus/service.go`
+- `internal/systemstatus/service_test.go`
+- `internal/workerclient/checker.go`
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/understand/service.go`
+- `internal/understand/service_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/queue_store_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:03] [Feature]
+- **Change**: 新增 same_person 标签驱动聚类任务链路
+- **Risk Analysis**: 主要风险在于 same_person 当前依赖 person 命名空间标签，若模型或人工标签不足则召回偏低；同时新增 cluster_same_person 任务后，真实数据库环境需要关注重复入队和聚类状态回收是否符合预期。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/queue_store_test.go`
+- `internal/understand/service.go`
+- `internal/understand/service_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:07] [Feature]
+- **Change**: 新增文件详情手工标签写入与 person 标签即时重聚类
+- **Risk Analysis**: 主要风险在于手工标签目前只支持新增不支持删除，错误 person 标签会直接触发 same_person 重聚类；此外前端表单是轻量实现，真实联调时需要关注重复点击和服务端错误提示的可见性。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/app/app.go`
+- `internal/filetags/service.go`
+- `internal/filetags/service_test.go`
+- `internal/filetags/postgres.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:12] [Feature]
+- **Change**: 新增手工标签删除与 person 标签重聚类收敛
+- **Risk Analysis**: 主要风险在于当前删除接口只删除 human 标签，若用户误以为能删除 AI 标签会产生预期差；同时删除 person 标签会直接触发按标签重聚类，真实数据量较大时需要关注这类操作的即时开销。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/filetags/service.go`
+- `internal/filetags/service_test.go`
+- `internal/filetags/postgres.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `internal/sameperson/service.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:26] [Feature]
+- **Change**: 新增文件原始内容预览接口与详情页图片视频预览
+- **Risk Analysis**: 主要风险在于 /api/files/{id}/content 直接读取原始文件，真实大文件视频场景下需要关注带宽和 Range 行为；另外当前没有缩略图缓存，文件详情打开时会直接请求原文件，首开体验受媒体大小影响。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `internal/files/files.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:30] [Feature]
+- **Change**: 新增 devdoctor 命令与正式 volume 扫描接口
+- **Risk Analysis**: 主要风险在于 devdoctor 当前只做本地依赖静态检查，不代表数据库和模型服务一定可连通；同时 volume 扫描接口目前直接创建 scan_volume 任务，若前端连续点击需要依赖现有任务去重或人工控制避免重复扫描。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/devdoctor/main.go`
+- `cmd/server/main.go`
+- `internal/devdoctor/service.go`
+- `internal/devdoctor/service_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `internal/httpserver/assets/app.js`
+- `Makefile`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:33] [Feature]
+- **Change**: 新增本地样本媒体生成器与最小端到端验证路径
+- **Risk Analysis**: 主要风险在于当前样本生成器只生成图片，不覆盖视频链路；README 里的 smoke 路径默认 volume id 为 1，若本地已存在数据需按实际返回值调整。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/devsample/main.go`
+- `internal/devsample/generator.go`
+- `internal/devsample/generator_test.go`
+- `Makefile`
+- `README.md`
+- `.gitignore`
+----------------------------------------
+## [2026-04-10 10:39] [Feature]
+- **Change**: 新增视频 poster 与关键帧提取，并将理解链路接到关键帧
+- **Risk Analysis**: 主要风险在于 ffmpeg 抽帧当前采用固定时间点策略，超短视频或异常编码视频可能抽帧失败；同时关键帧目前只用于 understanding，不参与相似检索，后续还需要补 phash 和 embedding 才能把 same_content/same_series 做实。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/ffmpeg.go`
+- `internal/mediaextract/postgres.go`
+- `internal/mediaextract/service_test.go`
+- `internal/mediaextract/postgres_test.go`
+- `internal/understand/service.go`
+- `internal/understand/postgres.go`
+- `internal/understand/service_test.go`
+- `internal/understand/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:46] [feat]
+- **Change**: 补齐 image/video pHash 落库，并让提取后确定性重算 same_content
+- **Risk Analysis**: same_content 目前对图片只按完全相同的 pHash 分组，还不支持更宽松的近似距离匹配；视频 same_content 仍未利用关键帧 pHash 做候选召回。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/postgres.go`
+- `internal/mediaextract/service_test.go`
+- `internal/mediaextract/postgres_test.go`
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `cmd/server/main.go`
+----------------------------------------
+## [2026-04-10 10:51] [feat]
+- **Change**: 新增视频关键帧 same_content 与图片近似 pHash 过滤
+- **Risk Analysis**: 图片 same_content 当前通过 pHash 前缀召回加汉明距离过滤，仍可能漏掉更大范围的近似图；视频 same_content 仅依赖理解帧 pHash，尚未结合时长、码率或 embedding 做更稳的同内容判定。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 10:56] [feat]
+- **Change**: 升级 same_series，加入文件名家族与现有视觉特征过滤
+- **Risk Analysis**: same_series 目前仍未使用 embedding，只能依赖文件名家族、图片 pHash 和视频关键帧 pHash 做保守过滤；对于同一系列但文件名混乱且画面差异较大的素材，仍可能被拆得过细。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 11:04] [feat]
+- **Change**: 升级 same_person 收口逻辑并为文件列表接入 preview 预览
+- **Risk Analysis**: same_person 仍未接入真正的人脸特征，只是在手工标签保持全量聚类的前提下，对过大的 AI 标签候选做文件名和目录级收口；文件列表预览目前图片直接回原图，后续仍需要真正的缩略图缓存来降低大图加载成本。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/service_test.go`
+- `internal/filetags/service.go`
+- `internal/filetags/service_test.go`
+- `internal/files/files.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `internal/app/app_test.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 13:35] [feat]
+- **Change**: 为图片提取链路接入本地缩略图缓存，并让 preview 优先使用缩略图
+- **Risk Analysis**: 当前图片缩略图会在首次提取时同步生成，超大图片在首次处理时仍会占用一定 CPU；缩略图生成目前只覆盖可解码图片格式，HEIC 等运行时不可解码格式仍会回退到无缓存预览。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/postgres.go`
+- `internal/mediaextract/service_test.go`
+- `internal/mediaextract/postgres_test.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 13:44] [code]
+- **Change**: 补齐 embedding 最小链路，基于 pHash 生成稳定向量并接入后台任务
+- **Risk Analysis**: 当前 embedding 仍是基于 pHash 的占位视觉向量，只用于打通 embeddings 表、任务调度和后续接入点，并不能替代真实视觉模型；PostgreSQL 写入依赖 vector 扩展和多语句 Exec，在真实库环境仍需做一次端到端联调验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/embeddings/service.go`
+- `internal/embeddings/postgres.go`
+- `internal/embeddings/service_test.go`
+- `internal/embeddings/postgres_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/mediaextract/service.go`
+- `internal/mediaextract/service_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/tasks/tasks_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 14:18] [code]
+- **Change**: 升级 same_series，加入 embedding 收口并修复空 pHash 误匹配
+- **Risk Analysis**: 当前 same_series 使用的 embedding 仍来自 pHash 占位向量，本质上是在现有规则基础上增加统一的向量消费接口，真实区分能力仍受限；另外 Postgres 侧通过 vector::text 读取向量做应用层比较，真实大数据量场景下还需要后续评估性能和是否下推到数据库。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 14:27] [code]
+- **Change**: 升级 same_person，加入 embedding 收口并支持跨媒体候选保留
+- **Risk Analysis**: 当前 same_person 仍然以 person 标签作为召回入口，embedding 只是用于 AI 大候选集的收口增强，还不是真正的人脸特征识别；另外现阶段的 embedding 仍由 pHash 占位向量生成，所以跨目录、跨媒体保留能力比之前更强，但准确率上限仍受真实模型缺失限制。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 14:37] [code]
+- **Change**: 将 embedding 生成迁入 Python worker 协议，并在运行时接入 embed_media
+- **Risk Analysis**: 当前 embed_media 协议已经打通，但真实视觉 embedding 仍未接入，worker 依旧默认基于 pHash 生成占位向量，所以收益主要在于后续替换成本下降，而不是立即提升识别精度；另外 worker 每次请求仍以短会话方式启动，真实大批量 embedding 任务下的吞吐和启动开销还需要后续优化。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/workerclient/client.go`
+- `internal/workerclient/client_test.go`
+- `worker/main.py`
+- `worker/worker_test.py`
+- `internal/embeddings/service.go`
+- `internal/embeddings/postgres.go`
+- `internal/embeddings/worker.go`
+- `internal/embeddings/service_test.go`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 14:44] [code]
+- **Change**: 为 embed_media 接入本地 pixel provider，并用 ffmpeg 生成 8x8 灰度视觉向量
+- **Risk Analysis**: 当前 pixel provider 依赖本机 ffmpeg，对 HEIC 或非常见格式、以及部分异常文件的解码稳定性仍取决于系统环境；同时 8x8 灰度向量只是轻量本地视觉特征，不是高质量语义 embedding，但它已经比纯 pHash 更接近真实图像内容，并且保留了失败回退路径。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `worker/main.py`
+- `worker/worker_test.py`
+- `README.md`
+----------------------------------------
+## [2026-04-10 15:00] [code]
+- **Change**: 升级 same_content，加入 embedding 兜底聚类并补齐 Postgres 取数
+- **Risk Analysis**: 当前 same_content 仍然优先依赖 sha256 和 pHash，embedding 只是作为兜底路径参与保守聚类，因此误判风险相对可控；但图片 embedding 目前采用前缀召回、视频 embedding 目前采用精确向量重合，这两种策略在真实大规模数据下仍然偏保守，后续如果要提高召回率还需要引入更合理的向量近邻检索。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 15:08] [code]
+- **Change**: 统一 fallback embedding 为 64 维，并把 same_content 图片 embedding 召回升级为向量近邻过滤
+- **Risk Analysis**: 当前 fallback embedding 与 pixel embedding 已统一为 64 维，这为后续 pgvector 检索打平了维度基础；same_content 图片 embedding 现在使用向量距离过滤而不是字符串前缀，正确性更强，但由于阈值仍是保守常量、视频 embedding 仍未升级为真正近邻查询，所以整体召回率还需要在真实数据上继续校准。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `worker/main.py`
+- `worker/worker_test.py`
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 15:41] [code]
+- **Change**: 升级 same_content 视频 embedding 召回为向量近邻查询
+- **Risk Analysis**: 本次改动把 same_content 中视频关键帧 embedding 的候选召回从精确字符串匹配改为 pgvector 距离过滤，并保留至少两帧命中的约束，能减少因向量文本完全相等导致的漏召回风险。主要风险在于当前阈值仍是经验值，真实样本上可能出现召回过宽或过窄；另外 SQL 现在依赖数据库已启用 vector 类型与距离操作符，若本地数据库扩展配置不完整，运行期会直接失败。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 15:45] [code]
+- **Change**: 为 embed_media 增加 semantic provider，复用 VLM 输出生成语义向量
+- **Risk Analysis**: 本次改动只增强 Python worker 的 embed_media 能力，没有改 Go 侧协议和数据库结构，回退路径仍然保留 placeholder，因此对现有主链路的破坏面较小。主要风险在于 semantic provider 依赖 understand_media 当前配置的 VLM 输出稳定性，如果模型输出波动较大，生成的语义哈希向量可能导致聚类阈值需要重新校准；另外视频逐帧调用 VLM 会显著增加 embedding 任务耗时。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `worker/main.py`
+- `worker/worker_test.py`
+- `README.md`
+----------------------------------------
+## [2026-04-10 15:52] [code]
+- **Change**: 修复 embedding 落库模型名丢失，并清理视频旧 frame embedding
+- **Risk Analysis**: 本次改动修复了 worker 返回的真实 embedding model_name 在 Go 落库时被硬编码覆盖的问题，同时把视频帧 embedding 的替换删除范围扩大到同类型全部旧向量，避免 semantic 与旧 phash/pixel 结果混存。主要风险在于现有读取侧仍有部分查询只看特定 model_name，后续需要继续统一读取策略；另外删除范围扩大后，如果未来希望同文件保留多套视频帧向量并行对比，需要重新设计存储策略。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/embeddings/service.go`
+- `internal/embeddings/service_test.go`
+- `internal/embeddings/postgres.go`
+- `internal/embeddings/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:02] [code]
+- **Change**: 统一聚类读取侧 embedding 选择逻辑，按类型读取最新向量
+- **Risk Analysis**: 本次改动把 same_content、same_person、same_series 三条聚类读取链路从固定 model_name=phash-v1 改成按 embedding_type 读取最新一条向量，解决了 semantic/pixel 等新 provider 已落库但聚类读不到的问题。主要风险在于当前“最新”定义依赖 embeddings.id 的插入顺序，如果未来引入回填任务或跨库迁移导致时序不稳定，可能需要改成显式的 created_at 或 current 指针；另外不同 provider 的向量空间如果混用但阈值未分开调，仍可能带来召回质量波动。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:14] [code]
+- **Change**: 为 same_content/same_person/same_series 增加 embedding model 隔离
+- **Risk Analysis**: 本次改动把三条聚类链路的 embedding 判定从只看向量值升级为同时看 model_name，只有同 model 的向量才允许进入距离比较或近邻查询，减少了 pixel、semantic、placeholder 等不同向量空间直接混比带来的误召回风险。主要风险在于当前实现采用严格 model 相等策略，短期内会降低跨 provider 的召回率；另外部分历史数据如果缺少 model_name，将不会参与 embedding 比较，需要后续通过重算 embedding 补齐。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:23] [code]
+- **Change**: 在文件详情中暴露 embedding provider/model 摘要
+- **Risk Analysis**: 本次改动只扩展文件详情查询、HTTP DTO 和前端展示，用于把当前可见的 embedding type、provider、model_name、vector_count 暴露出来，方便排查聚类到底使用了哪套向量。主要风险较低，核心行为没有变化；需要注意 provider 目前是根据 model_name 前缀做推断，因此如果未来新增命名规则不同的 provider，详情页会先显示 unknown，需要同步补充映射规则。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:29] [code]
+- **Change**: 在聚类详情成员中暴露 embedding provider/model 摘要
+- **Risk Analysis**: 本次改动扩展了 cluster detail 的 member 查询、HTTP DTO 和前端展示，把每个成员当前可见的 embedding provider、model_name 和 vector_count 直接展示出来，便于审核同组文件时判断当前聚类依据。主要风险较低，属于只读展示增强；需要注意 provider 仍然依赖 model_name 前缀推断，如果后续新增 provider 命名不匹配，界面会显示 unknown，需要同步补映射。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:38] [code]
+- **Change**: 增加文件级 Recompute Embeddings 与 Recluster 入口
+- **Risk Analysis**: 本次改动新增了文件级人工重算入口，风险主要在于重复入队可能带来额外后台任务，但当前使用幂等 EnsureJob 入队策略，实际行为可控。HTTP 层依赖 file detail 读取 media_type 来决定 embedding 任务类型，如果文件详情查询失败会直接返回错误，不会产生错误任务。前端仅增加两个按钮和对应 POST 调用，没有改动现有筛选与审核主流程。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:39] [code]
+- **Change**: 让文件级重算 embedding 先刷新 AI 理解结果
+- **Risk Analysis**: 本次调整把文件级 Recompute Embeddings 扩展为先入队 infer_tags 再入队 embedding，主要风险是会比之前多出一条 AI 理解任务，增加后台吞吐压力，但能保证 semantic provider 使用的是最新理解结果，行为更一致。改动没有改变原有任务类型和执行器，只是调整了人工入口的入队顺序。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:42] [code]
+- **Change**: 增强 same_series 的跨目录保守召回
+- **Risk Analysis**: 本次改动扩展了 same_series 的候选范围，不再只限于同目录，而是在相近时间窗口内对同文件名家族的跨目录文件做有限补召回。风险在于跨目录召回可能引入新的误并，但实现中额外要求文件名家族一致且 pHash 或 embedding 等技术特征也接近，仍保持保守策略。查询层增加了一条附近候选读取路径，但限制了时间窗口和数量上限，负载可控。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 16:44] [code]
+- **Change**: 增强 understand_media 提示词以稳定产出 person 与结构化标签
+- **Risk Analysis**: 本次改动只调整了 worker 侧的提示词，没有修改协议字段，因此兼容性风险较低。主要风险在于真实模型输出分布会发生变化，可能带来标签数量和命名风格的变化，但这是有意为之，目的是让 canonical namespace 和 structured_attributes 更稳定，并提升 same_person 后续可用性。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `worker/main.py`
+- `worker/worker_test.py`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:16] [code]
+- **Change**: 重构前端为工作台式媒体治理界面
+- **Risk Analysis**: 本次改动主要集中在静态页面结构和样式层，没有修改后端接口和前端数据绑定协议，因此功能性风险较低。风险主要在于布局重排后某些旧的视觉假设可能失效，但已通过现有 HTTP 页面测试和前端脚本语法检查，基础交互入口仍然保留。整体方向从纵向堆叠后台改为摘要区+浏览区+详情侧栏，更符合媒体治理工作台场景。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:19] [code]
+- **Change**: 将 Recent Files 重构为照片管理器式卡片网格
+- **Risk Analysis**: 本次改动只调整文件浏览区的前端渲染结构和样式，没有改动后端接口或文件详情加载逻辑。风险主要在于卡片网格重排可能影响已有的点击命中区域或小屏布局，但已通过 HTTP 相关测试、前端脚本语法检查和 worker 回归，现有筛选、选择和详情打开链路保持不变。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:23] [code]
+- **Change**: 为文件浏览区增加多选与批量审核入口
+- **Risk Analysis**: 本次改动仅在前端增加文件多选状态和批量审核条，批量动作复用现有单文件 review 接口逐个提交，没有引入新的后端协议，因此兼容性风险较低。主要风险在于自动刷新和筛选切换时多选状态丢失或与当前可见列表不一致，但实现里已在重新加载文件时清理不可见选择，并在无结果时重置选择状态。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:24] [code]
+- **Change**: 增强文件浏览区的筛选可视化与多选反馈
+- **Risk Analysis**: 本次改动继续集中在前端浏览体验，没有新增后端接口。新增的 active filter bar 只读取现有查询状态并做展示，风险较低；多选反馈改为通过 data 属性驱动卡片样式，也不会影响已有详情打开逻辑。主要风险在于自动刷新时多选态与当前可见列表同步，但当前实现已在文件重载时统一收口。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/httpserver/assets/index.html`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:27] [code]
+- **Change**: 增强 cluster detail 的审核摘要与成员卡片布局
+- **Risk Analysis**: 本次改动仅调整 cluster detail 的前端渲染结构和样式，没有修改后端数据格式。风险主要在于成员点击区域和动作区布局变化，但现有成员跳转和 cluster 操作接口未变，且已经通过 HTTP 测试和前端脚本检查。新的摘要信息完全由现有数据派生，不引入额外状态复杂度。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:34] [code]
+- **Change**: 为 cluster 审核区增加连续审核导航与自动前进
+- **Risk Analysis**: 本次改动仅涉及前端状态管理与交互逻辑，不修改后端协议。主要风险在于 selectedClusterID 与当前列表状态不同步，导致操作后跳转到非预期候选；已通过保持 currentClusters 单一来源、在 refresh 后重选，以及全量前端语法检查和现有 Go/Python 测试降低风险。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/assets/app.js`
+----------------------------------------
+## [2026-04-10 17:36] [code]
+- **Change**: 增强 cluster 连续审核的键盘切换与列表上下文
+- **Risk Analysis**: 本次改动集中在前端 cluster 审核交互，新增了选中项滚动、队列位置显示和 ArrowUp/ArrowDown/j/k 键盘切换。主要风险是全局快捷键与输入控件冲突，或在刷新后 currentClusters 与选中状态短暂不一致；已通过 editable target 过滤、统一 selectCluster 入口以及现有回归测试降低风险。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+----------------------------------------
+## [2026-04-10 17:40] [code]
+- **Change**: 为 same_person 增加无显式 person 标签时的自动候选召回
+- **Risk Analysis**: 本次改动扩展了 same_person 的候选来源：当文件缺少显式 person 标签时，会从 content/sensitive 标签中提取弱人物信号，再通过 embedding、父目录和文件名家族做收口。主要风险是泛标签导致误召回，但实现上对 auto 信号始终执行 narrow 过滤，且没有改变人工标签优先级；全量 Go/Python/前端检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:43] [code]
+- **Change**: 让 same_person 自动召回消费 understanding 的结构化人物信号
+- **Risk Analysis**: 本次改动增强了 same_person 的自动人物召回来源。除了原有 content/sensitive 标签文案外，还会从 understanding 的 structured_attributes 中读取 subject_count、has_face、capture_type 等结构化信号，用于召回无显式 person 标签的图片和视频。主要风险在于结构化字段值不统一导致召回偏差；当前实现只匹配少量明确值，并继续通过 embedding、目录和文件名家族收口，降低误召回。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:45] [code]
+- **Change**: 为 same_person 成员引入有语义的候选分数与排序
+- **Risk Analysis**: 本次改动让 same_person 候选成员的 score 不再固定为 0.55，而是由来源强弱（human/ai/auto）和证据强弱（文件名家族、同目录、embedding 接近）共同决定，并按分数排序后写入 cluster_members。主要风险是现有阈值偏移导致个别候选排序变化，但实现没有改变聚类的基本召回条件，只增强了成员分层与可解释性；全量测试已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:49] [code]
+- **Change**: 将 same_person 候选强度抬升到 cluster 列表与详情层
+- **Risk Analysis**: 本次改动为 cluster 数据模型和 HTTP DTO 增加了 strong_member_count 与 top_member_score，并把 same_person 的候选强度直接展示到前端列表与详情。主要风险是聚类查询扫描列顺序错位或前端对空值处理不当；已通过 clusters/httpserver 单测、全量 Go 测试、worker 测试与前端语法检查覆盖。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:52] [code]
+- **Change**: 收紧 same_person 中弱自动信号的成组条件
+- **Risk Analysis**: 本次改动把 same_person 的 auto 信号分成强弱两档。对于 情侣/多人/AV/做爱/口交 这类弱自动信号，不再允许仅凭同目录成组，至少要求文件名家族或 embedding 证据，以减少泛内容误召回。主要风险是召回率略降，但这是有意收紧，且已有针对弱信号的正反测试覆盖。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:56] [code]
+- **Change**: 为 same_content 增加推荐保留版本排序与 best_quality 角色
+- **Risk Analysis**: 本次改动让 same_content 组内不再只是无序重复项，而是基于 quality_score、分辨率、时长和文件大小做排序，并把首项标记为 best_quality，其余标记为 duplicate_candidate。主要风险是个别边界样本的推荐顺序变化，但这是预期行为提升，且现有实现保持规则简单可解释，相关单测与全量回归已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+----------------------------------------
+## [2026-04-10 17:59] [code]
+- **Change**: 在 same_content 审核界面中显性化推荐保留版本
+- **Risk Analysis**: 本次改动只涉及前端表现层与少量说明文档，不改变后端协议。主要变更是对 same_content 聚类列表和详情增加 Recommended Keep 展示，并将 best_quality/duplicate_candidate 做成更明确的角色标签。风险较低，已通过前端语法检查、相关 Go 包测试和 worker 测试验证。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 18:01] [code]
+- **Change**: 为 same_series 增加 series_focus 审核焦点并接入前端
+- **Risk Analysis**: 本次改动为 same_series 成员引入了轻量角色 series_focus，按时间中位点挑选一个审核焦点，并在前端详情中显式展示 Review Focus。该改动不改变 same_series 的召回规则，只增强审核指引，主要风险是焦点选择策略过于简单，但实现稳定、可解释，且相关包测试和前端检查已通过。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+----------------------------------------
+## [2026-04-10 18:11] [code]
+- **Change**: 补强视频详情元数据并提升 same_content 的视频保留排序
+- **Risk Analysis**: 本次改动把视频的 fps、bitrate、video_codec、audio_codec 接入了文件详情 DTO 和前端展示，同时扩展了 same_content 的视频排序规则，在原有 quality_score、分辨率、时长和文件大小之外增加码率、帧率与容器信号。主要风险是已有 same_content 视频候选组的推荐保留顺序会变化，但排序逻辑保持简单可解释，且已通过 Go 全量测试、Python worker 测试和前端语法检查。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/service_test.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:15] [code]
+- **Change**: 增加视频关键帧摘要展示并补强视频质量评分规则
+- **Risk Analysis**: 本次改动为文件详情新增了视频关键帧摘要返回与前端展示，同时扩展了 infer_quality 的视频评分逻辑，让 fps、duration、video codec 和 container 进入评分与摘要。主要风险是历史视频的 quality 分数和排序会发生变化，但该变化属于预期收敛，且不会直接触发删除；已通过 Go 全量测试、Python worker 测试和前端语法检查。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/httpserver/assets/app.js`
+- `cmd/server/main.go`
+- `internal/quality/service.go`
+- `internal/quality/service_test.go`
+- `internal/quality/postgres.go`
+- `internal/quality/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:19] [code]
+- **Change**: 增加视频关键帧预览接口并在文件详情展示关键帧图片
+- **Risk Analysis**: 本次改动新增了视频关键帧预览接口，并在文件详情里直接展示系统用于理解的视频关键帧图片。主要风险是新路由与原有文件内容路由产生解析冲突，或帧索引越界时返回不符合预期；当前实现已将关键帧预览单独分支处理，并通过 httpserver/app 测试和前端语法检查验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/files/files.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `internal/app/app_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-10 18:20] [code]
+- **Change**: 新增 embedding 检索索引 migration
+- **Risk Analysis**: 本次改动新增了 embedding 索引 migration，为按 file/frame 读取最新向量和 image_visual/video_frame_visual 的向量距离查询补充索引。主要风险在于真实 PostgreSQL 环境执行 migration 时的建索引耗时，以及 ivfflat lists 参数后续可能需要按数据量调整；当前改动不影响编译与业务逻辑，相关数据库与聚类包测试已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `db/migrations/0002_embedding_indexes.sql`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:11] [code]
+- **Change**: 收紧 same_person 弱自动信号的时间窗口
+- **Risk Analysis**: 本次改动仅调整 same_person 的弱自动信号过滤逻辑，对 情侣/多人/AV/做爱/口交 这类自动信号新增了时间窗口约束，避免只靠 embedding 将相隔很久的素材并入同一候选组。主要风险是少量跨时间但确属同人的素材召回会下降，但这是为减少误判做的有意收敛；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:13] [code]
+- **Change**: 让 same_person 读取并利用结构化人物信号参与打分
+- **Risk Analysis**: 本次改动把 has_face、subject_count、capture_type 从 understanding 结果接入了 same_person 的文件上下文与候选数据，并纳入候选分数计算。主要风险是同一候选组内的成员排序会发生变化，但该变化只影响 score 和审核优先级，不会扩大召回范围；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:15] [code]
+- **Change**: 为 same_person 弱自动信号增加结构化人物形态冲突过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的弱自动信号路径，在已有时间窗口约束之外，如果候选和锚点在 subject_count 等结构化人物形态上明显冲突，就会直接剔除。主要风险是少量真实同人但结构化属性识别不稳定的样本会降低召回，但该改动只影响弱自动信号路径，目标是进一步压低误判；全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:19] [code]
+- **Change**: 将时间邻近性纳入 same_person 候选打分
+- **Risk Analysis**: 本次改动没有扩大 same_person 的召回范围，只是在已有候选内加入了时间邻近性打分，让更接近同一拍摄批次的候选排得更靠前。主要风险是组内 score 和排序会变化，但这属于预期优化，不改变聚类基本边界；全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:21] [code]
+- **Change**: 收紧 same_series 跨目录 family 候选的时间窗口
+- **Risk Analysis**: 本次改动只影响 same_series 的跨目录 family 候选，对于同文件名家族且技术特征接近的素材新增了时间窗口约束，避免把同名但跨很久的不同批次内容并成同一系列。主要风险是少量真实跨目录但时间较远的同系列素材召回会下降，但这符合 same_series 保守建组的设计目标；全量 Go 测试、Python worker 测试和前端语法检查已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:25] [code]
+- **Change**: 为 same_content 的视频 embedding 兜底路径增加时长兼容性过滤
+- **Risk Analysis**: 本次改动只作用于 same_content 的视频 embedding 兜底路径，不影响 sha256 完全重复和关键帧 pHash 命中路径。现在即使关键帧 embedding 相似，如果视频时长差过大，也不会仅凭 embedding 被并为同内容，目标是降低长短视频、剪辑片段和不同版本混并的风险。主要风险是少量真实同内容但时长差异较大的样本会降低召回，但这是有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:27] [code]
+- **Change**: 为 same_content 的图片 embedding 兜底路径增加纵横比兼容性过滤
+- **Risk Analysis**: 本次改动只作用于 same_content 的图片 embedding 兜底路径，不影响 sha256 完全重复和图片 pHash 命中路径。现在即使图片 embedding 接近，如果纵横比明显冲突，也不会仅凭 embedding 被并为同内容，目标是降低横图/竖图、不同构图素材被误并的风险。主要风险是少量真实同内容但裁切差异较大的图片召回会下降，但这是有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:28] [code]
+- **Change**: 为 same_person 弱自动信号增加 capture_type 冲突过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的弱自动信号路径，在已有时间窗口和人物形态冲突过滤之外，如果候选和锚点在 capture_type 上明显冲突，例如 selfie 与 screenshot，就会被直接剔除。主要风险是少量真实同人但 capture_type 识别不稳定的样本会降低召回，但该改动只影响弱自动信号路径，目标是继续压低误判；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:32] [code]
+- **Change**: 为 same_series 增加 capture_type 冲突过滤
+- **Risk Analysis**: 本次改动让 same_series 在判断候选时也会参考 understanding 的 capture_type。现在如果候选和锚点在拍摄形态上明显冲突，例如 photo 与 screenshot，即使同目录且同文件名家族，也不会直接并入同一系列。主要风险是少量真实同系列但 capture_type 识别不稳定的样本召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:34] [code]
+- **Change**: 为 same_content 的图片 embedding 兜底路径增加分辨率比例过滤
+- **Risk Analysis**: 本次改动只作用于 same_content 的图片 embedding 兜底路径，不影响 sha256 完全重复和图片 pHash 命中路径。现在即使图片 embedding 接近，如果分辨率比例差距过大，例如原图与极小缩略图，也不会仅凭 embedding 被并为同内容，目标是降低缩略图误并风险。主要风险是少量真实同内容但尺寸差异特别大的图片召回会下降，但这是有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:41] [code]
+- **Change**: 为 same_content 的视频关键帧 pHash 路径增加时长兼容性过滤
+- **Risk Analysis**: 本次改动把 same_content 视频路径的时长兼容性过滤从 embedding 兜底扩展到了关键帧 pHash 命中路径。现在即使关键帧 pHash 有重合，如果视频时长差过大，也不会直接并为同内容，目标是继续降低长短视频、剪辑片段和不同版本混并的风险。主要风险是少量真实同内容但时长差异较大的样本召回会下降，但这属于有意收紧；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:45] [code]
+- **Change**: 为 same_series 的视频候选增加时长兼容性过滤
+- **Risk Analysis**: 本次改动让 same_series 在处理视频候选时也会校验时长兼容性。现在即使关键帧 pHash 或 embedding 接近，如果时长差过大，也不会直接并入同一系列，目标是降低长视频、短片段和不同版本素材被误并的风险。主要风险是少量真实同系列但时长差异较大的视频召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:47] [code]
+- **Change**: 为 same_person 的弱自动视频候选增加时长兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的弱自动信号路径，在已有时间窗口、人物形态和 capture_type 冲突过滤之外，视频候选还会校验时长兼容性。现在即使 embedding 接近，如果视频时长差过大，也不会继续并入同一人的弱自动候选，目标是降低长视频、短片段和无关视频被误召回的风险。主要风险是少量真实同人但时长差异很大的视频召回会下降，但该改动只影响弱自动信号路径，目标是进一步压低误判；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:53] [code]
+- **Change**: 为 same_series 的图片候选增加纵横比兼容性过滤
+- **Risk Analysis**: 本次改动让 same_series 在处理图片候选时也会校验纵横比兼容性。现在即使同目录、同文件名家族且 embedding 接近，如果图片在构图上明显冲突，例如横图与竖图，也不会直接并入同一系列，目标是降低不同构图素材被误并的风险。主要风险是少量真实同系列但裁切差异较大的图片召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 15:56] [code]
+- **Change**: 为 same_series 的图片候选增加分辨率比例过滤
+- **Risk Analysis**: 本次改动让 same_series 在处理图片候选时也会校验分辨率比例。现在即使同目录、同文件名家族且 embedding 接近，如果一张是原图、一张接近极小缩略图，也不会直接并入同一系列，目标是降低缩略图误并风险。主要风险是少量真实同系列但尺寸差异特别大的图片召回会下降，但 same_series 的设计目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:08] [code]
+- **Change**: 为 same_person 自动图片候选增加纵横比兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的自动图片候选路径。现在即使 embedding 接近，如果锚点和候选在图片方向与纵横比上明显冲突，例如横图与竖图，也不会继续并入同一人的候选，目标是降低构图明显不同图片的误召回风险。主要风险是少量真实同人但构图差异较大的图片召回会下降，但该改动只影响自动候选路径，不影响显式 human person 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:11] [code]
+- **Change**: 为 same_content 图片 pHash 候选增加方向与纵横比过滤
+- **Risk Analysis**: 本次改动继续收紧 same_content 的图片 pHash 兜底路径。现在即使图片 pHash 足够接近，如果候选与锚点在方向或纵横比上明显冲突，例如横图对竖图，也不会继续并入同内容聚类，目标是降低图片 pHash 误并风险。这里刻意没有增加分辨率比例过滤，因为 same_content 需要保留同内容不同质量版本的聚类能力；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:13] [code]
+- **Change**: 为 same_person AI 大候选集增加图片方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的 AI 标签收口路径。现在当 AI person 标签命中过大的候选集时，图片候选除了 embedding 命中外，还会校验方向、纵横比和分辨率兼容性，避免横图和竖图这类明显冲突的图片仅凭近似向量被保留下来；同时仍允许缺少尺寸信息的 family 或 parent 候选继续参与。主要风险是少量真实同人但构图差异较大的图片召回会下降，但该改动只影响 AI 大候选收口，不影响 human 标签和自动人物候选路径；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:16] [code]
+- **Change**: 为 same_content 视频候选增加画幅方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_content 的视频候选路径。现在即使关键帧 pHash 或视频 embedding 足够接近，只要候选与锚点的画幅方向明显冲突，例如横屏对竖屏，并且双方存在分辨率信息，就不会继续并入同内容聚类，目标是降低不同构图视频的误并风险。主要风险是少量真实同内容但被重新裁切成不同方向的视频召回会下降，但这类素材更接近片段或衍生版本，不宜默认直接并入同内容；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:22] [code]
+- **Change**: 为 same_series 视频候选增加画幅方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_series 的视频候选路径。现在即使关键帧 pHash 或视频 embedding 足够接近，只要候选与锚点的画幅方向明显冲突，例如横屏对竖屏，并且双方存在分辨率信息，就不会继续并入同一系列，目标是降低不同构图视频被误并成同一系列的风险。主要风险是少量真实同系列但被重新裁切成不同方向的视频召回会下降，但 same_series 的目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:26] [code]
+- **Change**: 为 same_person 视频候选增加画幅方向兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的视频候选路径。现在无论是 AI 大候选集还是弱自动信号，只要候选与锚点的画幅方向明显冲突，例如横屏对竖屏，并且双方存在分辨率信息，就不会继续并入同一人的候选，目标是降低不同构图视频被误召回的风险。主要风险是少量真实同人但被重新裁切成不同方向的视频召回会下降，但该改动只影响 AI 和 auto 的视频候选收口，不影响 human 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:30] [code]
+- **Change**: 修正 same_content 视频方向过滤对候选顺序敏感的问题
+- **Risk Analysis**: 本次改动修正了 same_content 视频方向过滤依赖候选返回顺序的问题。现在视频方向兼容性会使用真实文件分辨率作为锚点，而不是从候选列表中猜测首个带尺寸的结果，避免 portrait 候选排在前面时把真实 landscape 锚点反向过滤掉。主要风险是 GetFileHash 查询和扫描顺序发生变化，若字段映射不一致会影响 samecontent 视频链路；samecontent 包测试、Postgres 相关测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:33] [code]
+- **Change**: 修正 same_content 图片锚点过滤对候选顺序敏感的问题
+- **Risk Analysis**: 本次改动修正了 same_content 图片方向与尺寸过滤依赖候选返回顺序的问题。现在无论是图片 pHash 路径还是图片 embedding 路径，都会优先使用真实文件分辨率作为锚点；当真实锚点缺少尺寸信息时，图片 embedding 路径会回退到候选中的真实尺寸锚点，避免误伤原有按候选尺寸过滤和排序的场景。主要风险是图片 samecontent 过滤链路的锚点选择逻辑更复杂，若后续再改调用签名容易引入回归；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:37] [code]
+- **Change**: 为 same_content 视频候选增加画幅比例兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_content 的视频候选路径。现在在视频方向一致的前提下，还会继续校验画幅比例兼容性，避免 16:9 与 4:3 这类差异明显的视频仅凭关键帧相似或 embedding 接近就并成同内容，目标是进一步降低视频误并风险。主要风险是少量真实同内容但经历了强裁切或重构图的视频召回会下降，但这类素材更接近衍生版本，不适合默认直接并入同内容；samecontent 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:39] [code]
+- **Change**: 为 same_series 视频候选增加画幅比例兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_series 的视频候选路径。现在在视频方向一致的前提下，还会继续校验画幅比例兼容性，避免 16:9 与 4:3 这类差异明显的视频仅凭关键帧重合或 embedding 接近就并成同一系列，目标是进一步降低视频误并风险。主要风险是少量真实同系列但被强裁切或重构图的视频召回会下降，但 same_series 的目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:41] [code]
+- **Change**: 为 same_person 视频候选增加画幅比例兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的视频候选路径。现在无论是 AI 大候选集还是弱自动信号，在视频方向一致的前提下，还会继续校验画幅比例兼容性，避免 16:9 与 5:4 这类差异明显的视频仅凭 embedding 接近就并入同一人的候选，目标是进一步降低视频误召回风险。主要风险是少量真实同人但被强裁切或重构图的视频召回会下降，但该改动只影响 AI 和 auto 的视频候选收口，不影响 human 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:49] [code]
+- **Change**: 为 same_person 视频候选增加分辨率兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的视频候选路径。现在无论是 AI 大候选集还是弱自动信号，在视频时长、方向和画幅比例之外，还会继续校验分辨率比例兼容性，避免 4K 原片与极小转码版本仅凭 embedding 接近就并入同一人的候选，目标是进一步降低视频误召回风险。主要风险是少量真实同人但经过极端压缩的视频召回会下降，但该改动只影响 AI 和 auto 的视频候选收口，不影响 human 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:53] [code]
+- **Change**: 为 same_series 视频候选增加分辨率兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_series 的视频候选路径。现在在视频时长、方向和画幅比例之外，还会继续校验分辨率比例兼容性，避免 4K 原片与极小转码版本仅凭同目录、同 family 或技术特征接近就并成同一系列，目标是进一步降低视频误并风险。主要风险是少量真实同系列但经历极端压缩的视频召回会下降，但 same_series 的目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:48] [code]
+- **Change**: 为 same_person 视频候选增加分辨率兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_person 的视频候选路径。现在无论是 AI 大候选集还是弱自动信号，在视频时长、方向和画幅比例之外，还会继续校验分辨率比例兼容性，避免 4K 原片与极小转码版本仅凭 embedding 接近就并入同一人的候选，目标是进一步降低视频误召回风险。主要风险是少量真实同人但经过极端压缩的视频召回会下降，但该改动只影响 AI 和 auto 的视频候选收口，不影响 human 标签聚类；sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-12 16:49] [code]
+- **Change**: 为 same_series 视频候选增加分辨率兼容性过滤
+- **Risk Analysis**: 本次改动继续收紧 same_series 的视频候选路径。现在在视频时长、方向和画幅比例之外，还会继续校验分辨率比例兼容性，避免 4K 原片与极小转码版本仅凭同目录、同 family 或技术特征接近就并成同一系列，目标是进一步降低视频误并风险。主要风险是少量真实同系列但经历极端压缩的视频召回会下降，但 same_series 的目标本来就是保守建组；sameseries 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameseries/service.go`
+- `internal/sameseries/service_test.go`
+- `README.md`
+- `docs/AI_CHANGELOG.md`
+----------------------------------------
+## [2026-04-13 09:49] [code]
+- **Change**: 将 README 项目名更新为 FrameStack / 影栈
+- **Risk Analysis**: 本次改动只更新了 README 中的项目标题、简介和数据库示例名，把临时名 idea 统一为正式项目名 FrameStack / 影栈。风险很低，主要是避免后续文档和本地配置继续沿用旧名字导致理解混乱；未改动运行逻辑和代码路径。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `README.md`
+----------------------------------------
+## [2026-04-13 09:58] [code]
+- **Change**: 为 embedding 正式化补充 person_visual 类型与 embedding_type 协议字段
+- **Risk Analysis**: 本次改动完成了收尾计划第一阶段的基础设施升级：embed_media 请求现在会显式携带 embedding_type，embedding 服务引入了 person_visual 类型常量，数据库 migration 也补上了 person_visual 的约束和索引。这类改动主要影响协议边界和 schema 兼容性，风险在于未来如果旧数据库未执行新 migration，会在写入 person_visual 时触发约束错误；但当前现有 image_visual 和 video_frame_visual 链路保持不变，Go 全量测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/embeddings/service.go`
+- `internal/embeddings/service_test.go`
+- `internal/embeddings/worker.go`
+- `internal/workerclient/client.go`
+- `worker/main.py`
+- `worker/worker_test.py`
+- `db/migrations/0001_init.sql`
+- `db/migrations/0003_person_visual_embeddings.sql`
+- `README.md`
+- `findings.md`
+- `progress.md`
+- `task_plan.md`
+- `docs/superpowers/specs/2026-04-13-framestack-finalization-plan.md`
+----------------------------------------
+## [2026-04-13 10:01] [code]
+- **Change**: 为 same_person 读取侧接入 person_visual 优先级
+- **Risk Analysis**: 本次改动让 same_person 查询在读取图片和视频帧 embedding 时优先使用 person_visual，没有时再回退到 image_visual 或 video_frame_visual。这样后续只要写入 person_visual，就能立即被现有 same_person 聚类消费，而不会再把人物向量和通用视觉向量混在同一优先级上。主要风险是 SQL 读取逻辑更复杂，若后续改动 lateral 查询顺序可能影响优先级；但 sameperson 包测试、全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/postgres_test.go`
+- `README.md`
+- `findings.md`
+- `progress.md`
+----------------------------------------
+## [2026-04-13 10:09] [code]
+- **Change**: 打通 person_visual 的任务下发与写入主链路
+- **Risk Analysis**: 本次改动完成了 embedding 正式化第一阶段的最后一段：understand 服务会按 person 标签或结构化人物信号条件性下发 embed_person_image 与 embed_person_video_frames；jobexecutor、任务白名单和主进程装配也已接通这两个新任务，embeddings 服务能把结果写入 person_visual。主要风险在于人物信号判断目前仍是启发式，可能让部分非人物素材被额外下发一次人物向量任务，但这只增加少量计算，不会破坏现有聚类结果；全量 Go 测试、Python worker 测试和前端语法检查均已通过。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/understand/service.go`
+- `internal/understand/service_test.go`
+- `internal/jobexecutor/executor.go`
+- `internal/jobexecutor/executor_test.go`
+- `internal/tasks/queue_store.go`
+- `internal/embeddings/service.go`
+- `internal/embeddings/service_test.go`
+- `internal/embeddings/postgres.go`
+- `internal/embeddings/postgres_test.go`
+- `cmd/server/main.go`
+- `README.md`
+- `task_plan.md`
+- `progress.md`
+- `findings.md`
+----------------------------------------
+## [2026-04-13 10:22] [code]
+- **Change**: 为 same_person 接入 person_visual 类型感知与更强打分
+- **Risk Analysis**: same_person 现在会在召回和打分时显式区分 person_visual 与通用视觉向量，并在 Postgres 读取链路中透传 embedding_type。主要风险在于旧数据缺少 embedding_type 时的兼容路径是否与历史行为完全一致；本次通过将空类型归一到 generic_visual 保持了原有测试场景，并补充了 person_visual 优先级测试与扫描字段测试。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/sameperson/service.go`
+- `internal/sameperson/postgres.go`
+- `internal/sameperson/service_test.go`
+- `internal/sameperson/postgres_test.go`
+- `task_plan.md`
+- `progress.md`
+- `findings.md`
+- `README.md`
+----------------------------------------
+## [2026-04-13 10:25] [code]
+- **Change**: 为 same_person 审核界面透传 embedding_type 与人物证据提示
+- **Risk Analysis**: 本次改动把 cluster detail 的 embedding_type 从 SQL 读取一路透传到 HTTP DTO 和前端展示，并在 same_person 审核界面明确区分 person_visual 与通用视觉兜底证据。主要风险在于 cluster_members 查询增加字段后可能出现扫描顺序不一致或旧前端渲染逻辑遗漏；已通过 clusters/httpserver 单测和全量回归覆盖 DTO、SQL 扫描与前端脚本语法。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `internal/httpserver/assets/app.css`
+- `README.md`
+- `progress.md`
+----------------------------------------
+## [2026-04-13 10:30] [code]
+- **Change**: 为 same_person 审核补充 cluster 级人物证据摘要
+- **Risk Analysis**: 本次改动在 cluster detail 中新增 person_visual 数量、通用视觉数量和 top_evidence_type，并将其透传到 HTTP DTO 与前端 same_person 审核摘要。主要风险在于 clusters 查询和 DTO 新字段可能造成扫描顺序或序列化兼容问题；已通过 clusters/httpserver 定向测试和全量回归验证字段计算、映射与前端脚本语法。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `task_plan.md`
+- `progress.md`
+- `README.md`
+----------------------------------------
+## [2026-04-13 10:35] [code]
+- **Change**: 为 same_person 审核成员补充结构化人物证据轨迹
+- **Risk Analysis**: 本次改动在 cluster member 维度透传 has_face、subject_count、capture_type，并在 same_person 审核卡片上生成结构化证据轨迹。主要风险在于 cluster_members 查询新增字段后可能出现扫描顺序错误，或前端基于 abs_path/file_name 推导 family/folder 时出现边缘路径兼容问题；已通过 clusters/httpserver 定向测试、前端脚本检查和全量回归验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `progress.md`
+- `README.md`
+----------------------------------------
+## [2026-04-13 11:03] [code]
+- **Change**: 为 same_person 审核补充分层证据展示样式
+- **Risk Analysis**: 本次改动只调整 same_person 审核卡片中次级证据轨迹的样式和文档说明，不改变后端数据结构与业务逻辑。主要风险较低，集中在前端样式是否与现有卡片布局冲突；已通过前端脚本语法检查确认没有引入脚本错误。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `internal/httpserver/assets/app.css`
+- `progress.md`
+- `README.md`
+----------------------------------------
+## [2026-04-13 11:11] [code]
+- **Change**: 完成 same_person 阶段4的人物证据列表级展示迁移
+- **Risk Analysis**: 本次改动把 same_person 的人物证据摘要从详情页进一步扩展到聚类列表层，并在 Cluster/ClusterDTO/list query 中新增 person_visual_count、generic_visual_count、top_evidence_type 字段。主要风险在于列表查询新增聚合字段后可能导致扫描顺序错误，或前端列表渲染对新字段处理不完整；已通过 clusters/httpserver 定向测试、全量 Go 回归、worker 单测与前端脚本检查验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/clusters/clusters.go`
+- `internal/clusters/clusters_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/httpserver/assets/app.js`
+- `task_plan.md`
+- `progress.md`
+- `README.md`
+----------------------------------------
+## [2026-04-13 11:33] [code]
+- **Change**: 完成阶段2：same_content 与 same_series 显式透传 image_visual/video_frame_visual embedding_type，并按 embedding_type+model_name 双重校验，收尾正式通道契约
+- **Risk Analysis**: 本次改动主要风险在于把原先仅依赖 model_name 的判定收紧为 type+model 双重校验后，旧测试夹具或历史数据若缺少 embedding_type 可能导致召回下降。已同步更新 Postgres 读取、服务判定、测试夹具与文档，并通过 go/python/node 全量回归，当前风险可控。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/samecontent/service.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/service_test.go`
+- `internal/samecontent/postgres_test.go`
+- `internal/sameseries/service.go`
+- `internal/sameseries/postgres.go`
+- `internal/sameseries/service_test.go`
+- `internal/sameseries/postgres_test.go`
+- `task_plan.md`
+- `progress.md`
+- `findings.md`
+- `README.md`
+----------------------------------------

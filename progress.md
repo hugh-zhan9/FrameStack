@@ -1,0 +1,41 @@
+# Progress
+
+## 2026-04-13
+
+- 创建了收尾开发计划，明确后续主线为：
+  - embedding 正式化
+  - same_person 正式化
+- 确认当前代码状态适合先补基础设施，而不是继续微调阈值
+- 已完成阶段 1 的第一步：
+  - `embed_media` 请求显式带上 `embedding_type`
+  - 引入 `person_visual` 类型常量
+  - migration 支持 `person_visual` 类型和索引
+- 已完成阶段 1 的第二步：
+  - `same_person` 读取 embedding 时优先使用 `person_visual`
+  - 没有 `person_visual` 时再回退到通用视觉向量
+- 已完成阶段 1 的第三步：
+  - `infer_tags` 会按理解结果条件性下发 `embed_person_image` / `embed_person_video_frames`
+  - executor、job type、主进程装配和 embeddings 服务已接通 `person_visual` 写入链路
+- 已完成阶段 3：
+  - `same_person` 图片/视频帧读取路径会优先消费 `person_visual`
+  - 候选召回和打分现在显式区分 `person_visual` 与通用视觉向量
+  - `person_visual` 证据会稳定压过通用视觉证据，不再只靠模型名和弱语义信号
+- 已开始阶段 4：
+  - cluster detail 已透传 `embedding_type`
+  - `same_person` 审核界面会直接显示 `Person vector evidence` / `Generic visual fallback`
+  - 聚类摘要会显示当前组内 `person_visual` 成员数
+- 阶段 4 继续推进：
+  - cluster detail 现在还会返回 `person_visual` 数量、通用视觉数量和 `top_evidence_type`
+  - `same_person` 审核摘要会直接提示当前组是以人物向量为主还是只依赖通用视觉兜底
+- 阶段 4 本轮补充：
+  - cluster member 现在会透传 `has_face / subject_count / capture_type`
+  - `same_person` 成员卡片会直接显示结构化证据轨迹，例如 `has face / same family / capture selfie`
+  - 二级证据轨迹已和主证据提示分层展示，避免 UI 信息混在一起
+- 阶段 4 已完成：
+  - 聚类列表现在也会透传并展示 `person_visual_count / generic_visual_count / top_evidence_type`
+  - `same_person` 的打分、解释、详情页和列表页都已经迁移到新人物通道
+- 阶段 2 已完成：
+  - `same_content` 和 `same_series` 现在都会显式透传 `embedding_type`
+  - 两条链路现在都按 `embedding_type + model_name` 双重校验，不再只靠模型名避免混比
+  - Postgres 读取、服务判定和测试夹具已经统一到正式 `image_visual / video_frame_visual` 契约
+- 下一步进入阶段 5：做真实环境联调

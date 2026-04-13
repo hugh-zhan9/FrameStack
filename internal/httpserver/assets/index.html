@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Local Media Governance</title>
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Local Media Governance</p>
+          <h1>Offline Media Review Workstation</h1>
+          <p class="subtitle">
+            Review duplicates, series, people, and asset quality from one local-first control surface.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="refreshButton" type="button">Refresh Workspace</button>
+        </div>
+      </header>
+
+      <section class="dashboard-grid">
+        <section class="panel panel-primary">
+          <div class="panel-header">
+            <h2>System Status</h2>
+            <span id="systemStatusMeta" class="panel-meta">Current runtime readiness for local dependencies</span>
+          </div>
+          <div id="systemStatusOverall" class="status-banner" data-status="ready">
+            <strong data-system-overall>ready</strong>
+            <span data-system-summary>All required dependencies are available.</span>
+          </div>
+          <div id="systemStatusChecks" class="stats-grid stats-grid-compact">
+            <div class="stat-card status-card" data-status="disabled">
+              <span class="label">database</span>
+              <strong>disabled</strong>
+              <small>database disabled</small>
+            </div>
+            <div class="stat-card status-card" data-status="disabled">
+              <span class="label">worker</span>
+              <strong>disabled</strong>
+              <small>worker disabled</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Task Summary</h2>
+            <span class="panel-meta">Background activity across scans, extraction, AI, and clustering</span>
+          </div>
+          <div id="taskSummary" class="stats-grid">
+            <div class="stat-card"><span class="label">Pending</span><strong data-key="pending">0</strong></div>
+            <div class="stat-card"><span class="label">Running</span><strong data-key="running">0</strong></div>
+            <div class="stat-card"><span class="label">Failed</span><strong data-key="failed">0</strong></div>
+            <div class="stat-card"><span class="label">Dead</span><strong data-key="dead">0</strong></div>
+            <div class="stat-card"><span class="label">Succeeded</span><strong data-key="succeeded">0</strong></div>
+          </div>
+        </section>
+
+        <section class="panel panel-wide">
+          <div class="panel-header">
+            <h2>Candidate Summary</h2>
+            <span class="panel-meta">Current review workload by cluster type</span>
+          </div>
+          <div id="clusterSummary" class="stats-grid">
+            <div class="stat-card interactive-card" data-summary-filter="same_content">
+              <span class="label">same_content</span>
+              <strong data-cluster-summary="same_content">0 groups</strong>
+              <small data-cluster-members="same_content">0 members</small>
+            </div>
+            <div class="stat-card interactive-card" data-summary-filter="same_series">
+              <span class="label">same_series</span>
+              <strong data-cluster-summary="same_series">0 groups</strong>
+              <small data-cluster-members="same_series">0 members</small>
+            </div>
+            <div class="stat-card interactive-card" data-summary-filter="same_person">
+              <span class="label">same_person</span>
+              <strong data-cluster-summary="same_person">0 groups</strong>
+              <small data-cluster-members="same_person">0 members</small>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="workspace-grid">
+        <div class="workspace-main">
+          <section class="panel volumes-panel">
+            <div class="panel-header">
+              <h2>Volumes</h2>
+              <span class="panel-meta">Register mounted disks and trigger scans</span>
+            </div>
+            <form id="volumeForm" class="volume-form">
+              <input id="volumeDisplayName" name="display_name" type="text" placeholder="Display name" />
+              <input id="volumeMountPath" name="mount_path" type="text" placeholder="/Volumes/media" />
+              <button type="submit">Add Volume</button>
+            </form>
+            <ul id="volumesList" class="volumes-list">
+              <li class="volume-row empty">No volumes yet.</li>
+            </ul>
+          </section>
+
+          <section class="panel jobs-panel">
+            <div class="panel-header">
+              <h2>Recent Jobs</h2>
+              <span class="panel-meta">Latest worker activity</span>
+            </div>
+            <ul id="jobsList" class="jobs-list">
+              <li class="job-row empty">No jobs yet.</li>
+            </ul>
+          </section>
+
+          <section class="panel clusters-panel">
+            <div class="panel-header">
+              <h2>Candidate Clusters</h2>
+              <span class="panel-meta">Review candidate groups before keep, favorite, or trash decisions</span>
+            </div>
+            <form id="clusterFilterForm" class="file-search-form cluster-filter-form">
+              <select id="clusterTypeFilter" name="cluster_type">
+                <option value="">All Cluster Types</option>
+                <option value="same_content">same_content</option>
+                <option value="same_person">same_person</option>
+                <option value="same_series">same_series</option>
+              </select>
+              <select id="clusterStatusFilter" name="status">
+                <option value="">All Status</option>
+                <option value="candidate">candidate</option>
+                <option value="confirmed">confirmed</option>
+                <option value="ignored">ignored</option>
+              </select>
+              <button type="submit">Filter</button>
+            </form>
+            <ul id="clustersList" class="jobs-list">
+              <li class="job-row empty">No clusters yet.</li>
+            </ul>
+          </section>
+
+          <section class="panel browser-panel">
+            <div class="panel-header">
+              <h2>Recent Files</h2>
+              <span class="panel-meta">Search and inspect indexed files across names, paths, tags, quality, and cluster state</span>
+            </div>
+            <div id="bulkActionBar" class="bulk-action-bar" data-visible="false">
+              <div class="bulk-action-meta">
+                <strong id="bulkSelectionCount">0 selected</strong>
+                <span>Apply review actions to the current selection.</span>
+              </div>
+              <div class="bulk-action-controls">
+                <button id="selectVisibleFilesButton" type="button">Select Visible</button>
+                <button id="clearSelectedFilesButton" type="button">Clear</button>
+                <button id="bulkKeepFilesButton" type="button">Keep</button>
+                <button id="bulkFavoriteFilesButton" type="button">Favorite</button>
+                <button id="bulkTrashCandidateFilesButton" class="danger-button" type="button">Trash Candidate</button>
+              </div>
+            </div>
+            <div id="activeFilterBar" class="active-filter-bar" data-visible="false">
+              <div class="active-filter-meta">
+                <strong>Active Filters</strong>
+                <span>Current browser scope</span>
+              </div>
+              <div id="activeFilterChips" class="active-filter-chips"></div>
+            </div>
+            <form id="fileSearchForm" class="file-search-form browser-filter-form">
+              <input id="fileSearchInput" name="q" type="search" placeholder="Search files by name, path, format, codec..." />
+              <select id="fileMediaTypeFilter" name="media_type">
+                <option value="">All Media</option>
+                <option value="image">Images</option>
+                <option value="video">Videos</option>
+              </select>
+              <select id="fileQualityTierFilter" name="quality_tier">
+                <option value="">All Quality</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <select id="fileReviewActionFilter" name="review_action">
+                <option value="">All Review Actions</option>
+                <option value="favorite">Favorite</option>
+                <option value="keep">Keep</option>
+                <option value="trash_candidate">Trash Candidate</option>
+                <option value="hide">Hide</option>
+                <option value="ignore">Ignore</option>
+              </select>
+              <select id="fileStatusFilter" name="status">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="missing">Missing</option>
+                <option value="ignored">Ignored</option>
+                <option value="trashed">Trashed</option>
+              </select>
+              <select id="fileVolumeFilter" name="volume_id">
+                <option value="">All Volumes</option>
+              </select>
+              <select id="fileTagNamespaceFilter" name="tag_namespace">
+                <option value="">All Tag Namespaces</option>
+                <option value="content">content</option>
+                <option value="quality">quality</option>
+                <option value="management">management</option>
+                <option value="sensitive">sensitive</option>
+                <option value="person">person</option>
+              </select>
+              <input id="fileTagFilter" name="tag" type="search" placeholder="Tag exact match" />
+              <select id="fileClusterTypeFilter" name="cluster_type">
+                <option value="">All Cluster Types</option>
+                <option value="same_content">same_content</option>
+                <option value="same_series">same_series</option>
+                <option value="same_person">same_person</option>
+              </select>
+              <select id="fileClusterStatusFilter" name="cluster_status">
+                <option value="">All Cluster Status</option>
+                <option value="candidate">candidate</option>
+                <option value="confirmed">confirmed</option>
+                <option value="ignored">ignored</option>
+              </select>
+              <select id="fileSortFilter" name="sort">
+                <option value="updated_desc">Latest Updated</option>
+                <option value="quality_desc">Highest Quality</option>
+                <option value="size_desc">Largest First</option>
+                <option value="size_asc">Smallest First</option>
+                <option value="name_asc">Name A-Z</option>
+              </select>
+              <button type="submit">Search</button>
+            </form>
+            <ul id="filesList" class="files-list">
+              <li class="file-row empty">No files indexed yet.</li>
+            </ul>
+            <div class="files-footer">
+              <button id="filesLoadMoreButton" type="button">Load More</button>
+            </div>
+          </section>
+
+          <section class="panel tags-panel">
+            <div class="panel-header">
+              <h2>Top Tags</h2>
+              <span class="panel-meta">Click a tag to pivot the browser instantly</span>
+            </div>
+            <div class="tags-toolbar">
+              <select id="tagNamespaceFilter" name="namespace">
+                <option value="">All Namespaces</option>
+                <option value="content">content</option>
+                <option value="quality">quality</option>
+                <option value="management">management</option>
+                <option value="sensitive">sensitive</option>
+                <option value="person">person</option>
+              </select>
+            </div>
+            <ul id="tagsList" class="tag-cloud">
+              <li class="tag-cloud-item empty">No tags yet.</li>
+            </ul>
+          </section>
+        </div>
+
+        <aside class="workspace-side">
+          <section class="panel detail-panel">
+            <div class="panel-header">
+              <h2>Cluster Detail</h2>
+              <span id="clusterDetailMeta" class="panel-meta">Select a cluster to inspect members</span>
+            </div>
+            <div id="clusterDetailContent" class="file-detail-empty">No cluster selected.</div>
+          </section>
+
+          <section class="panel detail-panel detail-panel-sticky">
+            <div class="panel-header">
+              <h2>File Detail</h2>
+              <span id="fileDetailMeta" class="panel-meta">Select a file to inspect detail and path history</span>
+            </div>
+            <div id="fileDetailContent" class="file-detail-empty">No file selected.</div>
+          </section>
+
+          <section class="panel timeline-panel">
+            <div class="panel-header">
+              <h2>Job Timeline</h2>
+              <span id="timelineMeta" class="panel-meta">Select a job to inspect recent events</span>
+            </div>
+            <ul id="jobEventsList" class="events-list">
+              <li class="event-row empty">No events yet.</li>
+            </ul>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
