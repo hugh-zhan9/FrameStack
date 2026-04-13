@@ -14,6 +14,7 @@ import (
 	"idea/internal/clusters"
 	"idea/internal/config"
 	"idea/internal/database"
+	"idea/internal/directorypicker"
 	"idea/internal/embeddings"
 	"idea/internal/filehash"
 	"idea/internal/files"
@@ -247,6 +248,7 @@ func main() {
 
 	application.SetWorkerChecker(workerHealthChecker)
 	application.SetSystemStatusProvider(statusService)
+	application.SetDirectoryPicker(directorypicker.MacOSPicker{})
 
 	if err := application.Bootstrap(context.Background()); err != nil {
 		log.Fatal(err)

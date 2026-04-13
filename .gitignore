@@ -10,3 +10,6 @@ dist/
 build/
 coverage/
 tmp/
+web/dist/
+web/node_modules/
+*.tsbuildinfo

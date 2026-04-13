@@ -1949,3 +1949,43 @@
 - `findings.md`
 - `README.md`
 ----------------------------------------
+## [2026-04-13 14:33] [code]
+- **Change**: 接入 React 前端托管并补齐资源库、审核、任务、存储卷页面的响应式工作台，新增 macOS 目录选择接口
+- **Risk Analysis**: 前端已切换为 Go 优先托管 web/dist，资源库筛选与详情展示改为 React 驱动；新增目录选择接口依赖 macOS osascript。风险主要在浏览器端交互回归和本机目录选择器在不同运行环境下的可用性。已通过 Go 单测、Vitest、Vite build 和本地服务启动验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/config/config.go`
+- `internal/app/app.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `cmd/server/main.go`
+- `internal/directorypicker/service.go`
+- `README.md`
+- `.gitignore`
+- `web/package.json`
+- `web/package-lock.json`
+- `web/index.html`
+- `web/tsconfig.json`
+- `web/tsconfig.app.json`
+- `web/vite.config.ts`
+- `web/src/main.tsx`
+- `web/src/app/App.tsx`
+- `web/src/app/App.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/lib/contracts.ts`
+- `web/src/lib/useAsync.ts`
+- `web/src/styles/global.css`
+- `web/src/features/library/LibraryPage.tsx`
+- `web/src/features/library/LibraryPage.test.tsx`
+- `web/src/features/library/LibraryRoute.tsx`
+- `web/src/features/library/LibraryRoute.test.tsx`
+- `web/src/features/library/types.ts`
+- `web/src/pages/DashboardPage.tsx`
+- `web/src/pages/VolumesPage.tsx`
+- `web/src/pages/VolumesPage.test.tsx`
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/pages/TasksPage.tsx`
+- `web/src/pages/TasksPage.test.tsx`
+- `web/src/test/setup.ts`
+----------------------------------------

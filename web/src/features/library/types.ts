@@ -1,0 +1,23 @@
+export type FileItem = {
+  id: number;
+  file_name: string;
+  abs_path: string;
+  media_type: "image" | "video" | string;
+  status: string;
+  size_bytes: number;
+  updated_at: string;
+  has_preview: boolean;
+  tag_names?: string[];
+  quality_tier?: string;
+  width?: number;
+  height?: number;
+  duration_ms?: number;
+  format?: string;
+  container?: string;
+  fps?: number;
+  bitrate?: number;
+  video_codec?: string;
+  audio_codec?: string;
+  quality_score?: number;
+  review_action?: string;
+};

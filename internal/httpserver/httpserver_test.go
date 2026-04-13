@@ -138,6 +138,31 @@ func TestSystemStatusEndpointReturnsProviderSnapshot(t *testing.T) {
 	}
 }
 
+func TestDirectoryPickerEndpointReturnsPath(t *testing.T) {
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		DirectoryPicker: staticDirectoryPicker{
+			path: "/Volumes/media",
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/system/pick-directory", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var payload map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid json: %v", err)
+	}
+	if payload["path"] != "/Volumes/media" {
+		t.Fatalf("unexpected payload: %#v", payload)
+	}
+}
+
 func TestRootPageReturnsDashboardShell(t *testing.T) {
 	mux := httpserver.NewMux(httpserver.Dependencies{})
 
@@ -170,6 +195,49 @@ func TestRootPageReturnsDashboardShell(t *testing.T) {
 	}
 	if !contains(body, "Top Tags") {
 		t.Fatalf("expected tags section in response body, got %q", body)
+	}
+}
+
+func TestRootPagePrefersReactDistIndexWhenConfigured(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/index.html", []byte("<!doctype html><html><body><div id=\"root\">react app</div></body></html>"), 0o644); err != nil {
+		t.Fatalf("write index: %v", err)
+	}
+
+	mux := httpserver.NewMux(httpserver.Dependencies{FrontendDistDir: dir})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !contains(rec.Body.String(), "react app") {
+		t.Fatalf("expected react dist index, got %q", rec.Body.String())
+	}
+}
+
+func TestMuxServesReactDistAssetWhenConfigured(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(dir+"/assets", 0o755); err != nil {
+		t.Fatalf("mkdir assets: %v", err)
+	}
+	if err := os.WriteFile(dir+"/assets/app.js", []byte("console.log('react');"), 0o644); err != nil {
+		t.Fatalf("write asset: %v", err)
+	}
+
+	mux := httpserver.NewMux(httpserver.Dependencies{FrontendDistDir: dir})
+
+	req := httptest.NewRequest(http.MethodGet, "/assets/app.js", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !contains(rec.Body.String(), "react") {
+		t.Fatalf("expected dist asset content, got %q", rec.Body.String())
 	}
 }
 
@@ -1073,6 +1141,15 @@ type staticSystemStatusProvider struct {
 
 func (s staticSystemStatusProvider) SystemStatus(_ context.Context) (systemstatus.Snapshot, error) {
 	return s.snapshot, s.err
+}
+
+type staticDirectoryPicker struct {
+	path string
+	err  error
+}
+
+func (s staticDirectoryPicker) PickDirectory(_ context.Context) (string, error) {
+	return s.path, s.err
 }
 
 type staticJobListProvider struct {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -25,6 +26,10 @@ type TaskSummaryProvider interface {
 
 type SystemStatusProvider interface {
 	SystemStatus(ctx context.Context) (systemstatus.Snapshot, error)
+}
+
+type DirectoryPicker interface {
+	PickDirectory(ctx context.Context) (string, error)
 }
 
 type JobListProvider interface {
@@ -319,7 +324,9 @@ type FileJobRunner interface {
 }
 
 type Dependencies struct {
+	FrontendDistDir        string
 	SystemStatusProvider   SystemStatusProvider
+	DirectoryPicker        DirectoryPicker
 	TaskSummaryProvider    TaskSummaryProvider
 	JobListProvider        JobListProvider
 	JobCreator             JobCreator
@@ -345,11 +352,13 @@ type Dependencies struct {
 
 func NewMux(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", indexHandler)
+	mux.HandleFunc("/", indexHandler(deps.FrontendDistDir))
+	mux.Handle("/assets/", reactAssetHandler(deps.FrontendDistDir))
 	mux.Handle("/static/", http.StripPrefix("/static/", staticHandler()))
 	mux.HandleFunc("/healthz", okHandler)
 	mux.HandleFunc("/readyz", readyHandler(deps.SystemStatusProvider))
 	mux.HandleFunc("/api/system-status", systemStatusHandler(deps.SystemStatusProvider))
+	mux.HandleFunc("/api/system/pick-directory", directoryPickerHandler(deps.DirectoryPicker))
 	mux.HandleFunc("/api/task-summary", taskSummaryHandler(deps.TaskSummaryProvider))
 	mux.HandleFunc("/api/jobs", jobsHandler(deps.JobListProvider, deps.JobCreator))
 	mux.HandleFunc("/api/jobs/", jobActionHandler(deps.JobRetrier, deps.JobEventListProvider))
@@ -424,6 +433,29 @@ func systemStatusHandler(provider SystemStatusProvider) http.HandlerFunc {
 	}
 }
 
+func directoryPickerHandler(picker DirectoryPicker) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", "POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if picker == nil {
+			http.Error(w, "directory picker unavailable", http.StatusNotImplemented)
+			return
+		}
+		path, err := picker.PickDirectory(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"path": path})
+	}
+}
+
 func taskSummaryHandler(provider TaskSummaryProvider) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -444,15 +476,25 @@ func taskSummaryHandler(provider TaskSummaryProvider) http.HandlerFunc {
 	}
 }
 
-func indexHandler(w http.ResponseWriter, _ *http.Request) {
-	body, err := webAssets.ReadFile("assets/index.html")
-	if err != nil {
-		http.Error(w, "index not found", http.StatusInternalServerError)
-		return
+func indexHandler(frontendDistDir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			if tryServeReactDistFile(w, r, frontendDistDir) {
+				return
+			}
+		}
+		if tryServeReactIndex(w, frontendDistDir) {
+			return
+		}
+		body, err := webAssets.ReadFile("assets/index.html")
+		if err != nil {
+			http.Error(w, "index not found", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(body)
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(body)
 }
 
 func jobsHandler(provider JobListProvider, creator JobCreator) http.HandlerFunc {
@@ -533,6 +575,43 @@ func staticHandler() http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(body)
 	})
+}
+
+func reactAssetHandler(frontendDistDir string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !tryServeReactDistFile(w, r, frontendDistDir) {
+			http.NotFound(w, r)
+		}
+	})
+}
+
+func tryServeReactIndex(w http.ResponseWriter, frontendDistDir string) bool {
+	indexPath := filepath.Join(frontendDistDir, "index.html")
+	body, err := os.ReadFile(indexPath)
+	if err != nil {
+		return false
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(body)
+	return true
+}
+
+func tryServeReactDistFile(w http.ResponseWriter, r *http.Request, frontendDistDir string) bool {
+	if strings.TrimSpace(frontendDistDir) == "" {
+		frontendDistDir = filepath.Join("web", "dist")
+	}
+	cleanPath := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+	if cleanPath == "." || strings.HasPrefix(cleanPath, "..") {
+		return false
+	}
+	fullPath := filepath.Join(frontendDistDir, cleanPath)
+	info, err := os.Stat(fullPath)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	http.ServeFile(w, r, fullPath)
+	return true
 }
 
 func volumesHandler(provider VolumeListProvider, creator VolumeCreator) http.HandlerFunc {

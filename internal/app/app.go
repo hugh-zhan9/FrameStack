@@ -27,6 +27,7 @@ type App struct {
 	migrator       Migrator
 	workerChecker  WorkerChecker
 	systemStatus   SystemStatusProvider
+	directoryPicker httpserver.DirectoryPicker
 	taskSummary    httpserver.TaskSummaryProvider
 	jobList        httpserver.JobListProvider
 	jobCreator     httpserver.JobCreator
@@ -95,6 +96,11 @@ func (a *App) SetWorkerChecker(checker WorkerChecker) {
 
 func (a *App) SetSystemStatusProvider(provider SystemStatusProvider) {
 	a.systemStatus = provider
+	a.refreshHandler()
+}
+
+func (a *App) SetDirectoryPicker(provider httpserver.DirectoryPicker) {
+	a.directoryPicker = provider
 	a.refreshHandler()
 }
 
@@ -205,7 +211,9 @@ func (a *App) SetFileJobRunner(provider httpserver.FileJobRunner) {
 
 func (a *App) refreshHandler() {
 	a.handler = httpserver.NewMux(httpserver.Dependencies{
+		FrontendDistDir:        a.config.FrontendDistDir,
 		SystemStatusProvider:   a.systemStatus,
+		DirectoryPicker:        a.directoryPicker,
 		TaskSummaryProvider:    a.taskSummary,
 		JobListProvider:        a.jobList,
 		JobCreator:             a.jobCreator,

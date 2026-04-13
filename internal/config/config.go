@@ -14,6 +14,7 @@ type Config struct {
 	JobWorkerName   string
 	JobPollInterval time.Duration
 	MigrationsDir   string
+	FrontendDistDir string
 	RunMigrations   bool
 	WorkerCommand   string
 	WorkerScript    string
@@ -29,6 +30,7 @@ func Load() Config {
 		JobWorkerName:   getenv("IDEA_JOB_WORKER_NAME", "local-server"),
 		JobPollInterval: getenvDuration("IDEA_JOB_POLL_INTERVAL", 2*time.Second),
 		MigrationsDir:   getenv("IDEA_MIGRATIONS_DIR", "db/migrations"),
+		FrontendDistDir: getenv("IDEA_FRONTEND_DIST_DIR", "web/dist"),
 		RunMigrations:   getenvBool("IDEA_RUN_MIGRATIONS", false),
 		WorkerCommand:   getenv("IDEA_WORKER_COMMAND", "python3"),
 		WorkerScript:    getenv("IDEA_WORKER_SCRIPT", "worker/main.py"),
