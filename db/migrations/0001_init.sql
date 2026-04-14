@@ -173,7 +173,7 @@ create table if not exists embeddings (
   frame_id bigint references video_frames(id) on delete cascade,
   embedding_type text not null,
   model_name text not null,
-  vector vector not null,
+  vector vector(64) not null,
   created_at timestamptz not null default now(),
   constraint chk_embeddings_type
     check (embedding_type in ('image_visual', 'video_frame_visual', 'person_visual', 'face', 'search_text')),
@@ -301,7 +301,7 @@ create table if not exists cluster_members (
   role text not null default 'member',
   created_at timestamptz not null default now(),
   constraint chk_cluster_members_role
-    check (role in ('cover', 'member', 'best_quality', 'duplicate_candidate'))
+    check (role in ('cover', 'member', 'best_quality', 'duplicate_candidate', 'series_focus'))
 );
 
 create unique index if not exists uq_cluster_members_cluster_file

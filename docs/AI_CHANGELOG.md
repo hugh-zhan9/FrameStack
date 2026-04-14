@@ -1989,3 +1989,195 @@
 - `web/src/pages/TasksPage.test.tsx`
 - `web/src/test/setup.ts`
 ----------------------------------------
+## [2026-04-14 14:25] [修复]
+- **Change**: 修复真实联调暴露的 PostgreSQL 与聚类任务问题，完成本地 Docker PostgreSQL+pgvector 联调验证
+- **Risk Analysis**: 新增 cluster_members 角色迁移并调整 same_content/embedding SQL，需在真实数据库上执行 migration 后再继续长期扫描。当前本地 Docker 数据库已验证通过，但已有旧失败任务记录仍会保留历史错误信息。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `db/migrations/0001_init.sql`
+- `db/migrations/0004_allow_series_focus_role.sql`
+- `internal/database/migration_contract_test.go`
+- `internal/embeddings/postgres.go`
+- `internal/embeddings/postgres_test.go`
+- `internal/samecontent/postgres.go`
+- `internal/samecontent/postgres_test.go`
+- `internal/samecontent/service.go`
+- `internal/samecontent/service_test.go`
+----------------------------------------
+## [2026-04-14 14:30] [修复]
+- **Change**: 修复 React 审核页在聚类接口返回 null 时崩溃的问题
+- **Risk Analysis**: 在 ReviewPage 前端层增加了 clusters 与 detail.members 的空数组兜底，并新增前端回归测试。风险较低，但如果后端未来继续返回不规范结构，仍建议逐步在 API 层做统一归一化。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/dist/index.html`
+- `web/dist/assets/index-BOmquc0f.css`
+- `web/dist/assets/index-B4G30O-g.js`
+----------------------------------------
+## [2026-04-14 14:45] [功能]
+- **Change**: 资源库改为基于游标的加载更多，避免深分页
+- **Risk Analysis**: 后端 /api/files 响应已从数组改为带 items/next_cursor/has_more 的对象，并在 React 资源库中启用游标式加载更多。现有前端已同步，但任何仍假设 /api/files 返回数组的外部调用方都需要一起升级。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `web/src/lib/api.ts`
+- `web/src/features/library/LibraryRoute.tsx`
+- `web/src/features/library/LibraryRoute.test.tsx`
+- `web/src/features/library/LibraryPage.tsx`
+- `web/src/features/library/LibraryPage.test.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/styles/global.css`
+- `web/dist/index.html`
+- `web/dist/assets/index-BNyRcrGy.css`
+- `web/dist/assets/index-DUwn4fuJ.js`
+----------------------------------------
+## [2026-04-14 14:48] [优化]
+- **Change**: 优化资源库右侧文件详情侧栏为跟随滚动并内部滚动
+- **Risk Analysis**: 仅调整 React 前端样式，在桌面端为 library 详情侧栏增加 sticky 与内部滚动，移动端保持原行为。风险较低，但如果未来详情区再加入很高的固定头部，需要重新校准 top 与 max-height。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/styles/global.css`
+- `web/dist/index.html`
+- `web/dist/assets/index-CKMZCJPU.css`
+- `web/dist/assets/index-DRKopTE-.js`
+----------------------------------------
+## [2026-04-14 14:57] [Feature]
+- **Change**: 新增文件详情默认程序打开按钮并补强搜索回退匹配
+- **Risk Analysis**: 本次改动新增 /api/files/{id}/open 接口、React 资源库详情打开按钮，并把文件搜索补成全文检索加 ILIKE 回退。主要风险是 macOS open 调用在非图形会话下可能失败，以及搜索回退会扩大匹配范围带来更多结果；已通过 Go 全量测试、Vitest 与前端构建验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `internal/reveal/service.go`
+- `internal/httpserver/httpserver.go`
+- `internal/httpserver/httpserver_test.go`
+- `internal/app/app.go`
+- `internal/app/app_test.go`
+- `cmd/server/main.go`
+- `internal/files/files.go`
+- `internal/files/files_test.go`
+- `web/src/lib/api.ts`
+- `web/src/features/library/LibraryRoute.tsx`
+- `web/src/features/library/LibraryRoute.test.tsx`
+- `web/src/styles/global.css`
+----------------------------------------
+## [2026-04-14 15:08] [Feature]
+- **Change**: 补全审核页动作按钮并下移资源库详情侧栏
+- **Risk Analysis**: 本次改动为 React 审核页补上确认、忽略、保留、收藏、待删候选以及上一组/下一组动作，并将资源库右侧详情侧栏的 sticky 起点下移，避免遮挡筛选栏。主要风险是前端状态切换后可能出现当前组详情与列表选中状态不同步；已通过 ReviewPage 与 LibraryRoute 的 Vitest 回归以及前端构建验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/styles/global.css`
+----------------------------------------
+## [2026-04-14 15:15] [Feature]
+- **Change**: 补充审核页成员预览、成功提示和当前组位置
+- **Risk Analysis**: 本次改动为 React 审核页增加了成员预览图、操作成功提示以及当前组位置展示，不涉及后端协议变更。主要风险是前端详情刷新与提示状态之间可能出现时序不一致；已通过 ReviewPage 定向 Vitest 和前端构建验证。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/styles/global.css`
+----------------------------------------
+## [2026-04-14 15:26] [Feature]
+- **Change**: 重构审核页为详情主视图与候选队列抽屉
+- **Risk Analysis**: 本次改动将 React 审核页从左右列表布局重构为详情主视图优先、候选队列抽屉和右侧操作摘要的工作台布局。主要风险是原有用户习惯会改变，且页面状态切换更多依赖前端本地状态；已通过 ReviewPage 定向 Vitest 和前端构建验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/styles/global.css`
+----------------------------------------
+## [2026-04-14 15:40] [Feature]
+- **Change**: 收紧审核页按钮语义并限制 same_content 专属处置动作
+- **Risk Analysis**: 本次改动将审核页主动作收敛为确认分组/否决分组，并仅在 same_content 场景下展示保留推荐版本和其余标记清理候选，避免 same_person 和 same_series 页面承担不必要的文件处置动作。主要风险是旧按钮命名变更后用户短期内需要适应；已通过 ReviewPage 定向 Vitest 和前端构建验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------
+## [2026-04-14 15:45] [Feature]
+- **Change**: 收紧审核页按钮为分组判断优先并限制 same_content 处置动作
+- **Risk Analysis**: 本次改动把审核页主动作收敛为确认分组和否决分组，并将文件处置动作限制为仅在 same_content 场景下展示保留推荐版本与其余标记清理候选，避免 same_person 和 same_series 页面承担额外处置语义。主要风险是按钮文案调整后用户需要短暂适应；已通过 ReviewPage 定向 Vitest 和前端构建验证。
+- **Risk Level**: S2（中级: 局部功能异常、可绕过但影响效率）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------
+## [2026-04-14 15:50] [前端]
+- **Change**: 将审核页的确认分组和否决分组移到右侧处置区
+- **Risk Analysis**: 低风险：仅调整审核页布局与按钮位置，不修改后端接口与审核语义。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+----------------------------------------
+## [2026-04-14 15:53] [前端]
+- **Change**: 在审核页明确展示 same_content 的推荐保留版本
+- **Risk Analysis**: 低风险：仅增强 same_content 审核页展示与测试，不修改后端接口与判定逻辑。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------
+## [2026-04-14 16:14] [前端]
+- **Change**: 将同内容审核收敛为单个推荐保留动作并给推荐版本加视觉高亮
+- **Risk Analysis**: 中低风险：修改 same_content 审核页按钮语义与前端调用路径，复用现有文件审核接口，不改后端数据结构。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/styles/global.css`
+----------------------------------------
+## [2026-04-14 16:19] [前端]
+- **Change**: 支持在同内容审核中手动选择保留版本并按选择执行清理动作
+- **Risk Analysis**: 中低风险：修改 same_content 审核交互和文件级审核调用，保留现有后端接口，主要影响前端选择状态与按钮行为。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+- `web/src/lib/api.ts`
+- `web/src/styles/global.css`
+----------------------------------------
+## [2026-04-14 16:23] [前端]
+- **Change**: 同内容审核执行后自动确认当前分组并切换到下一组
+- **Risk Analysis**: 低风险：仅调整 same_content 审核完成后的前端流程，复用现有分组状态接口，不修改后端判定逻辑。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------
+## [2026-04-14 16:28] [前端]
+- **Change**: 处理同内容审核后从前端队列移除当前组并在最后一组进入空状态
+- **Risk Analysis**: 低风险：仅调整审核页前端队列状态更新逻辑，不修改后端接口与数据结构。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------
+## [2026-04-14 16:36] [前端]
+- **Change**: 补齐清理候选查看与删除入口并让审核页只加载待审核分组
+- **Risk Analysis**: 中低风险：新增前端筛选与废纸篓入口，并调整审核页聚类查询为 candidate 状态；不修改后端数据结构。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/lib/api.ts`
+- `web/src/features/library/LibraryRoute.tsx`
+- `web/src/features/library/LibraryRoute.test.tsx`
+- `web/src/features/library/LibraryPage.tsx`
+- `web/src/features/library/LibraryPage.test.tsx`
+- `web/src/pages/ReviewPage.tsx`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------
+## [2026-04-14 17:26] [前端]
+- **Change**: 修复审核页聚类状态过滤参数错误导致刷新后已处理分组回流
+- **Risk Analysis**: 低风险：仅修正前端调用 /api/clusters 的查询参数名，不涉及样式调整与后端逻辑改动。
+- **Risk Level**: S3（低级: 轻微行为偏差或日志/可观测性影响）
+- **Changed Files**:
+- `web/src/lib/api.ts`
+- `web/src/pages/ReviewPage.test.tsx`
+----------------------------------------

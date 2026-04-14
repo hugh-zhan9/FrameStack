@@ -82,9 +82,18 @@ func (s PostgresStore) ListVideoFrameSources(ctx context.Context, fileID int64) 
 }
 
 func (s PostgresStore) UpsertFileEmbedding(ctx context.Context, input FileEmbeddingInput) error {
+	if err := s.Execer.ExecContext(
+		ctx,
+		deleteFileEmbeddingQuery,
+		input.FileID,
+		input.EmbeddingType,
+		input.ModelName,
+	); err != nil {
+		return err
+	}
 	return s.Execer.ExecContext(
 		ctx,
-		upsertFileEmbeddingQuery,
+		insertFileEmbeddingQuery,
 		input.FileID,
 		input.EmbeddingType,
 		input.ModelName,
@@ -125,13 +134,15 @@ where file_id = $1 and frame_role = 'understanding'
 order by timestamp_ms asc, id asc
 `
 
-const upsertFileEmbeddingQuery = `
+const deleteFileEmbeddingQuery = `
 delete from embeddings
 where
   file_id = $1
   and embedding_type = $2
-  and model_name = $3;
+  and model_name = $3
+`
 
+const insertFileEmbeddingQuery = `
 insert into embeddings (
   file_id,
   embedding_type,

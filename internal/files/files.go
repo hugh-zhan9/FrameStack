@@ -3,6 +3,8 @@ package files
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -104,6 +106,7 @@ type FileDetail struct {
 type ListOptions struct {
 	Limit         int
 	Offset        int
+	Cursor        string
 	Query         string
 	MediaType     string
 	QualityTier   string
@@ -115,6 +118,21 @@ type ListOptions struct {
 	ClusterType   string
 	ClusterStatus string
 	Sort          string
+}
+
+type ListResult struct {
+	Items      []File
+	NextCursor string
+	HasMore    bool
+}
+
+type fileCursor struct {
+	Sort       string   `json:"sort"`
+	ID         int64    `json:"id"`
+	UpdatedAt  string   `json:"updated_at,omitempty"`
+	SizeBytes  int64    `json:"size_bytes,omitempty"`
+	FileName   string   `json:"file_name,omitempty"`
+	QualityKey *float64 `json:"quality_key,omitempty"`
 }
 
 type RowsScanner interface {
@@ -153,23 +171,44 @@ func NewPostgresStoreFromDB(db SQLRowsDB) PostgresStore {
 	}
 }
 
-func (s PostgresStore) ListFiles(ctx context.Context, options ListOptions) ([]File, error) {
+func (s PostgresStore) ListFiles(ctx context.Context, options ListOptions) (ListResult, error) {
 	limit := options.Limit
 	if limit <= 0 {
 		limit = 20
 	}
+	fetchLimit := limit + 1
 	offset := options.Offset
 	if offset < 0 {
 		offset = 0
 	}
 	orderBy, err := resolveOrderBy(options.Sort)
 	if err != nil {
-		return nil, err
+		return ListResult{}, err
 	}
-
-	rows, err := s.Rows.QueryContext(ctx, fmt.Sprintf(listFilesQuery, orderBy), options.Query, options.MediaType, options.QualityTier, options.ReviewAction, options.Status, options.VolumeID, options.TagNamespace, options.Tag, options.ClusterType, options.ClusterStatus, limit, offset)
+	cursorClause, cursorArgs, err := buildCursorClause(options)
 	if err != nil {
-		return nil, err
+		return ListResult{}, err
+	}
+	queryArgs := []any{
+		options.Query,
+		options.MediaType,
+		options.QualityTier,
+		options.ReviewAction,
+		options.Status,
+		options.VolumeID,
+		options.TagNamespace,
+		options.Tag,
+		options.ClusterType,
+		options.ClusterStatus,
+	}
+	queryArgs = append(queryArgs, cursorArgs...)
+	queryArgs = append(queryArgs, fetchLimit, offset)
+	limitIndex := len(queryArgs) - 1
+	offsetIndex := len(queryArgs)
+	query := fmt.Sprintf(listFilesQuery, cursorClause, orderBy, limitIndex, offsetIndex)
+	rows, err := s.Rows.QueryContext(ctx, query, queryArgs...)
+	if err != nil {
+		return ListResult{}, err
 	}
 	defer rows.Close()
 
@@ -216,7 +255,7 @@ func (s PostgresStore) ListFiles(ctx context.Context, options ListOptions) ([]Fi
 			&hasPreview,
 			&thumbnailPath,
 		); err != nil {
-			return nil, err
+			return ListResult{}, err
 		}
 		item.Width = intPtrFromNull(width)
 		item.Height = intPtrFromNull(height)
@@ -236,9 +275,24 @@ func (s PostgresStore) ListFiles(ctx context.Context, options ListOptions) ([]Fi
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return ListResult{}, err
 	}
-	return items, nil
+	hasMore := len(items) > limit
+	if hasMore {
+		items = items[:limit]
+	}
+	nextCursor := ""
+	if hasMore && len(items) > 0 {
+		nextCursor, err = encodeCursor(options.Sort, items[len(items)-1])
+		if err != nil {
+			return ListResult{}, err
+		}
+	}
+	return ListResult{
+		Items:      items,
+		NextCursor: nextCursor,
+		HasMore:    hasMore,
+	}, nil
 }
 
 func (s PostgresStore) GetFileDetail(ctx context.Context, fileID int64) (FileDetail, error) {
@@ -525,7 +579,13 @@ left join lateral (
     limit 3
   ) top_tags
 ) tag_summary on true
-where ($1 = '' or sd.tsv @@ websearch_to_tsquery('simple', $1))
+where (
+  $1 = ''
+  or sd.tsv @@ websearch_to_tsquery('simple', $1)
+  or f.file_name ilike '%%' || $1 || '%%'
+  or f.abs_path ilike '%%' || $1 || '%%'
+  or sd.document_text ilike '%%' || $1 || '%%'
+)
   and ($2 = '' or f.media_type = $2)
   and ($3 = '' or quality.quality_tier = $3)
   and ($4 = '' or latest_review.action_type = $4)
@@ -555,9 +615,10 @@ where ($1 = '' or sd.tsv @@ websearch_to_tsquery('simple', $1))
         and ($10 = '' or c.status = $10)
     )
   )
+%s
 order by %s
-limit $11
-offset $12
+limit $%d
+offset $%d
 `
 
 const fileDetailQuery = `
@@ -831,8 +892,78 @@ func resolveOrderBy(raw string) (string, error) {
 	case "name_asc":
 		return "f.file_name asc, f.id asc", nil
 	case "quality_desc":
-		return "quality.quality_score desc nulls last, f.updated_at desc, f.id desc", nil
+		return "coalesce(quality.quality_score, -1) desc, f.updated_at desc, f.id desc", nil
 	default:
 		return "", fmt.Errorf("unsupported sort %s", raw)
 	}
+}
+
+func buildCursorClause(options ListOptions) (string, []any, error) {
+	if strings.TrimSpace(options.Cursor) == "" {
+		return "", nil, nil
+	}
+	cursor, err := decodeCursor(options.Cursor)
+	if err != nil {
+		return "", nil, fmt.Errorf("invalid cursor: %w", err)
+	}
+	sortKey := normalizedSort(options.Sort)
+	if cursor.Sort != sortKey {
+		return "", nil, fmt.Errorf("cursor sort mismatch")
+	}
+	switch sortKey {
+	case "updated_desc":
+		return "and (f.updated_at, f.id) < ($11::timestamptz, $12)", []any{cursor.UpdatedAt, cursor.ID}, nil
+	case "size_desc":
+		return "and (f.size_bytes, f.id) < ($11, $12)", []any{cursor.SizeBytes, cursor.ID}, nil
+	case "size_asc":
+		return "and (f.size_bytes, f.id) > ($11, $12)", []any{cursor.SizeBytes, cursor.ID}, nil
+	case "name_asc":
+		return "and (f.file_name, f.id) > ($11, $12)", []any{cursor.FileName, cursor.ID}, nil
+	case "quality_desc":
+		qualityKey := -1.0
+		if cursor.QualityKey != nil {
+			qualityKey = *cursor.QualityKey
+		}
+		return "and (coalesce(quality.quality_score, -1), f.updated_at, f.id) < ($11, $12::timestamptz, $13)", []any{qualityKey, cursor.UpdatedAt, cursor.ID}, nil
+	default:
+		return "", nil, fmt.Errorf("unsupported sort %s", sortKey)
+	}
+}
+
+func encodeCursor(sort string, file File) (string, error) {
+	cursor := fileCursor{
+		Sort:      normalizedSort(sort),
+		ID:        file.ID,
+		UpdatedAt: file.UpdatedAt,
+		SizeBytes: file.SizeBytes,
+		FileName:  file.FileName,
+	}
+	if file.QualityScore != nil {
+		value := *file.QualityScore
+		cursor.QualityKey = &value
+	}
+	payload, err := json.Marshal(cursor)
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(payload), nil
+}
+
+func decodeCursor(raw string) (fileCursor, error) {
+	payload, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return fileCursor{}, err
+	}
+	var cursor fileCursor
+	if err := json.Unmarshal(payload, &cursor); err != nil {
+		return fileCursor{}, err
+	}
+	return cursor, nil
+}
+
+func normalizedSort(raw string) string {
+	if strings.TrimSpace(raw) == "" {
+		return "updated_desc"
+	}
+	return raw
 }

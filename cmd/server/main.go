@@ -116,6 +116,10 @@ func main() {
 			Store:    revealStore,
 			Revealer: reveal.MacOSRevealer{},
 		})
+		application.SetFileOpener(reveal.Service{
+			Store:  revealStore,
+			Opener: reveal.MacOSRevealer{},
+		})
 		application.SetFileReviewer(fileReviewer{
 			service: review.Service{Store: reviewStore},
 		})
@@ -466,10 +470,11 @@ type fileListProvider struct {
 	store files.PostgresStore
 }
 
-func (p fileListProvider) ListFiles(ctx context.Context, input httpserver.FileListRequest) ([]httpserver.FileDTO, error) {
-	items, err := p.store.ListFiles(ctx, files.ListOptions{
+func (p fileListProvider) ListFiles(ctx context.Context, input httpserver.FileListRequest) (httpserver.FileListResponse, error) {
+	result, err := p.store.ListFiles(ctx, files.ListOptions{
 		Limit:         input.Limit,
 		Offset:        input.Offset,
+		Cursor:        input.Cursor,
 		Query:         input.Query,
 		MediaType:     input.MediaType,
 		QualityTier:   input.QualityTier,
@@ -483,11 +488,11 @@ func (p fileListProvider) ListFiles(ctx context.Context, input httpserver.FileLi
 		Sort:          input.Sort,
 	})
 	if err != nil {
-		return nil, err
+		return httpserver.FileListResponse{}, err
 	}
-	result := make([]httpserver.FileDTO, 0, len(items))
-	for _, item := range items {
-		result = append(result, httpserver.FileDTO{
+	items := make([]httpserver.FileDTO, 0, len(result.Items))
+	for _, item := range result.Items {
+		items = append(items, httpserver.FileDTO{
 			ID:           item.ID,
 			VolumeID:     item.VolumeID,
 			AbsPath:      item.AbsPath,
@@ -512,7 +517,11 @@ func (p fileListProvider) ListFiles(ctx context.Context, input httpserver.FileLi
 			HasPreview:   item.HasPreview,
 		})
 	}
-	return result, nil
+	return httpserver.FileListResponse{
+		Items:      items,
+		NextCursor: result.NextCursor,
+		HasMore:    result.HasMore,
+	}, nil
 }
 
 type fileDetailProvider struct {

@@ -247,6 +247,7 @@ type VideoFrameDTO struct {
 type FileListRequest struct {
 	Limit         int    `json:"limit"`
 	Offset        int    `json:"offset,omitempty"`
+	Cursor        string `json:"cursor,omitempty"`
 	Query         string `json:"query,omitempty"`
 	MediaType     string `json:"media_type,omitempty"`
 	QualityTier   string `json:"quality_tier,omitempty"`
@@ -260,8 +261,14 @@ type FileListRequest struct {
 	Sort          string `json:"sort,omitempty"`
 }
 
+type FileListResponse struct {
+	Items      []FileDTO `json:"items"`
+	NextCursor string    `json:"next_cursor,omitempty"`
+	HasMore    bool      `json:"has_more"`
+}
+
 type FileListProvider interface {
-	ListFiles(ctx context.Context, input FileListRequest) ([]FileDTO, error)
+	ListFiles(ctx context.Context, input FileListRequest) (FileListResponse, error)
 }
 
 type FileDetailProvider interface {
@@ -287,6 +294,10 @@ type FileTrasher interface {
 
 type FileRevealer interface {
 	RevealFile(ctx context.Context, fileID int64) error
+}
+
+type FileOpener interface {
+	OpenFile(ctx context.Context, fileID int64) error
 }
 
 type FileReviewActionRequest struct {
@@ -345,6 +356,7 @@ type Dependencies struct {
 	FileContentProvider    FileContentProvider
 	FileTrasher            FileTrasher
 	FileRevealer           FileRevealer
+	FileOpener             FileOpener
 	FileReviewer           FileReviewer
 	FileTagCreator         FileTagCreator
 	FileJobRunner          FileJobRunner
@@ -369,7 +381,7 @@ func NewMux(deps Dependencies) http.Handler {
 	mux.HandleFunc("/api/clusters", clustersHandler(deps.ClusterListProvider))
 	mux.HandleFunc("/api/clusters/", clusterActionHandler(deps.ClusterDetailProvider, deps.ClusterReviewer))
 	mux.HandleFunc("/api/files", filesHandler(deps.FileListProvider))
-	mux.HandleFunc("/api/files/", fileActionHandler(deps.FileDetailProvider, deps.FileContentProvider, deps.FileTrasher, deps.FileRevealer, deps.FileReviewer, deps.FileTagCreator, deps.FileJobRunner))
+	mux.HandleFunc("/api/files/", fileActionHandler(deps.FileDetailProvider, deps.FileContentProvider, deps.FileTrasher, deps.FileRevealer, deps.FileOpener, deps.FileReviewer, deps.FileTagCreator, deps.FileJobRunner))
 	return mux
 }
 
@@ -876,11 +888,13 @@ func filesHandler(provider FileListProvider) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		items := []FileDTO{}
+		result := FileListResponse{Items: []FileDTO{}}
 		if provider != nil {
-			result, err := provider.ListFiles(r.Context(), FileListRequest{
+			var err error
+			result, err = provider.ListFiles(r.Context(), FileListRequest{
 				Limit:         parseLimit(r.URL.Query().Get("limit")),
 				Offset:        parseOffset(r.URL.Query().Get("offset")),
+				Cursor:        strings.TrimSpace(r.URL.Query().Get("cursor")),
 				Query:         strings.TrimSpace(r.URL.Query().Get("q")),
 				MediaType:     strings.TrimSpace(r.URL.Query().Get("media_type")),
 				QualityTier:   strings.TrimSpace(r.URL.Query().Get("quality_tier")),
@@ -898,14 +912,13 @@ func filesHandler(provider FileListProvider) http.HandlerFunc {
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 				return
 			}
-			items = result
 		}
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(items)
+		_ = json.NewEncoder(w).Encode(result)
 	}
 }
 
-func fileActionHandler(detailProvider FileDetailProvider, contentProvider FileContentProvider, fileTrasher FileTrasher, fileRevealer FileRevealer, fileReviewer FileReviewer, fileTagCreator FileTagCreator, fileJobRunner FileJobRunner) http.HandlerFunc {
+func fileActionHandler(detailProvider FileDetailProvider, contentProvider FileContentProvider, fileTrasher FileTrasher, fileRevealer FileRevealer, fileOpener FileOpener, fileReviewer FileReviewer, fileTagCreator FileTagCreator, fileJobRunner FileJobRunner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/frames/") && strings.HasSuffix(r.URL.Path, "/preview") {
 			if r.Method != http.MethodGet {
@@ -1136,6 +1149,30 @@ func fileActionHandler(detailProvider FileDetailProvider, contentProvider FileCo
 				return
 			}
 			if err := fileRevealer.RevealFile(r.Context(), fileID); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/open") {
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", "POST")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if fileOpener == nil {
+				http.Error(w, "file open unavailable", http.StatusNotImplemented)
+				return
+			}
+			fileID, ok := parseFileOpenPath(r.URL.Path)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if err := fileOpener.OpenFile(r.Context(), fileID); err != nil {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
 				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
@@ -1428,6 +1465,24 @@ func parseFileRevealPath(path string) (int64, bool) {
 	if idPart == "" || strings.Contains(idPart, "/") {
 		return 0, false
 	}
+	value, err := strconv.ParseInt(idPart, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
+}
+
+func parseFileOpenPath(path string) (int64, bool) {
+	if !strings.HasPrefix(path, "/api/files/") || !strings.HasSuffix(path, "/open") {
+		return 0, false
+	}
+
+	idPart := strings.TrimSuffix(strings.TrimPrefix(path, "/api/files/"), "/open")
+	idPart = strings.TrimSuffix(idPart, "/")
+	if idPart == "" {
+		return 0, false
+	}
+
 	value, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || value <= 0 {
 		return 0, false

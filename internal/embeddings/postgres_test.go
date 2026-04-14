@@ -22,11 +22,20 @@ func TestPostgresStoreUpsertFileEmbeddingExecutesUpsert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected upsert to succeed: %v", err)
 	}
-	if !strings.Contains(normalizeSQL(execer.query), normalizeSQL("insert into embeddings")) {
-		t.Fatalf("unexpected query: %s", execer.query)
+	if len(execer.queries) != 2 {
+		t.Fatalf("expected delete then insert, got %#v", execer.queries)
 	}
-	if len(execer.args) != 4 || execer.args[3] != "[0.0,1.0]" {
-		t.Fatalf("unexpected args: %#v", execer.args)
+	if !strings.Contains(normalizeSQL(execer.queries[0]), normalizeSQL("delete from embeddings")) {
+		t.Fatalf("unexpected delete query: %s", execer.queries[0])
+	}
+	if !strings.Contains(normalizeSQL(execer.queries[1]), normalizeSQL("insert into embeddings")) {
+		t.Fatalf("unexpected insert query: %s", execer.queries[1])
+	}
+	if len(execer.allArgs[0]) != 3 || execer.allArgs[0][0] != int64(7) || execer.allArgs[0][1] != "image_visual" || execer.allArgs[0][2] != "phash-v1" {
+		t.Fatalf("unexpected delete args: %#v", execer.allArgs[0])
+	}
+	if len(execer.allArgs[1]) != 4 || execer.allArgs[1][3] != "[0.0,1.0]" {
+		t.Fatalf("unexpected insert args: %#v", execer.allArgs[1])
 	}
 }
 

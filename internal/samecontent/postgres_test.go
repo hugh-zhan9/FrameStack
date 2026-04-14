@@ -54,6 +54,31 @@ func TestBuildVideoFrameEmbeddingMatchesQueryBuildsPlaceholders(t *testing.T) {
 	}
 }
 
+func TestSameContentGroupedQueriesIncludeSelectedColumns(t *testing.T) {
+	videoPHashQuery, _ := buildVideoFrameMatchesQuery([]string{"a1", "b2"})
+	videoEmbeddingQuery, _ := buildVideoFrameEmbeddingMatchesQuery([]string{"[0.1,0.2]", "[0.3,0.4]"}, "semantic-v1")
+	requiredColumns := []string{
+		"group by f.id",
+		"quality.quality_score",
+		"quality.quality_tier",
+		"va.width",
+		"va.height",
+		"va.duration_ms",
+		"f.size_bytes",
+		"va.bitrate",
+		"va.fps",
+		"va.container",
+	}
+	for _, query := range []string{videoPHashQuery, videoEmbeddingQuery} {
+		normalized := strings.Join(strings.Fields(query), " ")
+		for _, column := range requiredColumns {
+			if !strings.Contains(normalized, column) {
+				t.Fatalf("expected grouped query to include %s: %s", column, query)
+			}
+		}
+	}
+}
+
 func TestSameContentQueriesDoNotPinEmbeddingModelName(t *testing.T) {
 	if strings.Contains(getFileHashQuery, "model_name = 'phash-v1'") {
 		t.Fatalf("getFileHashQuery should not pin model name: %s", getFileHashQuery)

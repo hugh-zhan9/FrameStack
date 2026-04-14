@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchFileDetail, fetchFiles } from "../../lib/api";
+import { fetchFileDetail, fetchFiles, moveFileToTrash, openFileWithDefaultApp } from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { LibraryPage } from "./LibraryPage";
 import type { FileItem } from "./types";
@@ -9,6 +9,7 @@ type LibraryFilters = {
   mediaType: string;
   qualityTier: string;
   status: string;
+  reviewAction: string;
   sort: string;
 };
 
@@ -17,15 +18,21 @@ const defaultFilters: LibraryFilters = {
   mediaType: "",
   qualityTier: "",
   status: "",
+  reviewAction: "",
   sort: "updated_desc"
 };
 
 export function LibraryRoute() {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
   const [filters, setFilters] = useState<LibraryFilters>(defaultFilters);
   const [error, setError] = useState<string | null>(null);
+  const [openPending, setOpenPending] = useState(false);
+  const [trashPending, setTrashPending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,11 +40,14 @@ export function LibraryRoute() {
     setError(null);
 
     fetchFiles(filters)
-      .then((items) => {
+      .then((page) => {
         if (cancelled) {
           return;
         }
+        const items = Array.isArray(page.items) ? page.items : [];
         setFiles(items);
+        setNextCursor(page.next_cursor ?? null);
+        setHasMore(Boolean(page.has_more));
         setSelectedFileId((current) => {
           if (current && items.some((item) => item.id === current)) {
             return current;
@@ -50,6 +60,8 @@ export function LibraryRoute() {
           return;
         }
         setFiles([]);
+        setNextCursor(null);
+        setHasMore(false);
         setError(err instanceof Error ? err.message : "加载资源失败");
       })
       .finally(() => {
@@ -63,6 +75,25 @@ export function LibraryRoute() {
     };
   }, [filters]);
 
+  async function handleLoadMore() {
+    if (!nextCursor || loadingMore) {
+      return;
+    }
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const page = await fetchFiles({ ...filters, cursor: nextCursor });
+      const items = Array.isArray(page.items) ? page.items : [];
+      setFiles((current) => [...current, ...items]);
+      setNextCursor(page.next_cursor ?? null);
+      setHasMore(Boolean(page.has_more));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载更多失败");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
   const detailState = useAsync(
     () => {
       if (selectedFileId == null) {
@@ -74,15 +105,57 @@ export function LibraryRoute() {
   );
   const detail = detailState.data;
 
+  async function handleOpenFile() {
+    if (!detail || openPending) {
+      return;
+    }
+    setOpenPending(true);
+    setError(null);
+    try {
+      await openFileWithDefaultApp(detail.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "默认程序打开失败");
+    } finally {
+      setOpenPending(false);
+    }
+  }
+
+  async function handleMoveToTrash() {
+    if (!detail || trashPending) {
+      return;
+    }
+    setTrashPending(true);
+    setError(null);
+    try {
+      await moveFileToTrash(detail.id);
+      setFiles((current) => current.filter((item) => item.id !== detail.id));
+      setSelectedFileId((current) => {
+        if (current !== detail.id) {
+          return current;
+        }
+        const remaining = files.filter((item) => item.id !== detail.id);
+        return remaining[0]?.id ?? null;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "移动到废纸篓失败");
+    } finally {
+      setTrashPending(false);
+    }
+  }
+
   return (
     <div className="library-layout">
       <LibraryPage
         files={files}
         loading={loading}
+        loadingMore={loadingMore}
+        hasMore={hasMore}
+        totalLoaded={files.length}
         selectedFileId={selectedFileId}
         onSelectFile={setSelectedFileId}
         filters={filters}
         onFiltersChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
+        onLoadMore={handleLoadMore}
         error={error}
       />
       <aside className="detail-panel">
@@ -96,6 +169,16 @@ export function LibraryRoute() {
               alt={`${detail.file_name}-detail`}
               className="detail-preview"
             />
+            <div className="detail-actions">
+              <button type="button" className="primary-button" onClick={handleOpenFile} disabled={openPending}>
+                {openPending ? "打开中…" : "默认程序打开"}
+              </button>
+              {detail.review_action === "trash_candidate" ? (
+                <button type="button" className="secondary-button" onClick={handleMoveToTrash} disabled={trashPending}>
+                  {trashPending ? "移动中…" : "移动到废纸篓"}
+                </button>
+              ) : null}
+            </div>
             <strong>{detail.file_name}</strong>
             <span className="detail-path">{detail.abs_path}</span>
             <div className="detail-meta">

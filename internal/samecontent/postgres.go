@@ -220,7 +220,14 @@ func (s PostgresStore) UpsertSameContentCluster(ctx context.Context, sha256 stri
 				role = "best_quality"
 			}
 		}
-		if err := s.Execer.ExecContext(ctx, insertClusterMemberQuery, clusterID, file.FileID, file.QualityScore, role); err != nil {
+		score := file.Score
+		if score <= 0 {
+			score = 1
+			if role != "best_quality" {
+				score = 0.5
+			}
+		}
+		if err := s.Execer.ExecContext(ctx, insertClusterMemberQuery, clusterID, file.FileID, score, role); err != nil {
 			return err
 		}
 	}
@@ -583,6 +590,15 @@ where f.media_type = 'video'
   and vf.frame_role = 'understanding'
   and vf.phash in (%s)
 group by f.id
+  , quality.quality_score
+  , quality.quality_tier
+  , va.width
+  , va.height
+  , va.duration_ms
+  , f.size_bytes
+  , va.bitrate
+  , va.fps
+  , va.container
 having count(distinct vf.phash) >= $%d
 order by f.id asc
 `, strings.Join(placeholders, ", "), len(args))
@@ -638,6 +654,15 @@ where f.media_type = 'video'
   and f.status <> 'trashed'
   and vf.frame_role = 'understanding'
 group by f.id
+  , quality.quality_score
+  , quality.quality_tier
+  , va.width
+  , va.height
+  , va.duration_ms
+  , f.size_bytes
+  , va.bitrate
+  , va.fps
+  , va.container
 having count(distinct iv.idx) >= $%d
 order by f.id asc
 `, strings.Join(valueRows, ", "), len(embeddings)+1, len(embeddings)+2, len(args))

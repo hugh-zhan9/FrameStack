@@ -427,6 +427,20 @@ func TestSetFileRevealerUpdatesHandlerDependencies(t *testing.T) {
 	}
 }
 
+func TestSetFileOpenerUpdatesHandlerDependencies(t *testing.T) {
+	application := app.New(config.Config{}, nil)
+	application.SetFileOpener(staticFileOpenProvider{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/files/7/open", nil)
+	rec := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
 func TestSetFileTagCreatorUpdatesHandlerDependencies(t *testing.T) {
 	application := app.New(config.Config{}, nil)
 	application.SetFileTagCreator(staticFileTagCreator{})
@@ -557,8 +571,8 @@ type staticFileListProvider struct {
 	items []httpserver.FileDTO
 }
 
-func (s staticFileListProvider) ListFiles(_ context.Context, _ httpserver.FileListRequest) ([]httpserver.FileDTO, error) {
-	return s.items, nil
+func (s staticFileListProvider) ListFiles(_ context.Context, _ httpserver.FileListRequest) (httpserver.FileListResponse, error) {
+	return httpserver.FileListResponse{Items: s.items}, nil
 }
 
 type staticFileDetailProvider struct {
@@ -610,6 +624,12 @@ func (staticFileTrashProvider) TrashFile(_ context.Context, _ int64) error {
 type staticFileRevealProvider struct{}
 
 func (staticFileRevealProvider) RevealFile(_ context.Context, _ int64) error {
+	return nil
+}
+
+type staticFileOpenProvider struct{}
+
+func (staticFileOpenProvider) OpenFile(_ context.Context, _ int64) error {
 	return nil
 }
 

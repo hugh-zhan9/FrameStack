@@ -32,6 +32,9 @@ func TestServiceClusterFileCreatesCandidateForDuplicateSHA(t *testing.T) {
 	if store.clusterFiles[1].Role != "duplicate_candidate" {
 		t.Fatalf("expected non-primary duplicate to be marked duplicate_candidate, got %#v", store.clusterFiles[1])
 	}
+	if store.clusterFiles[0].Score != 1 || store.clusterFiles[1].Score <= 0 || store.clusterFiles[1].Score >= 1 {
+		t.Fatalf("expected duplicate scores to be normalized into (0,1], got %#v", store.clusterFiles)
+	}
 }
 
 func TestServiceClusterFileSkipsUniqueSHA(t *testing.T) {

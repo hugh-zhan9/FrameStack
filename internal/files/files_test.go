@@ -3,6 +3,8 @@ package files_test
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -39,30 +41,33 @@ func TestPostgresStoreListFilesReturnsItems(t *testing.T) {
 	}
 	store := files.PostgresStore{Rows: queryer}
 
-	items, err := store.ListFiles(context.Background(), files.ListOptions{Limit: 10})
+	result, err := store.ListFiles(context.Background(), files.ListOptions{Limit: 10})
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(items) != 1 || items[0].FileName != "photo.jpg" {
-		t.Fatalf("unexpected files: %#v", items)
+	if len(result.Items) != 1 || result.Items[0].FileName != "photo.jpg" {
+		t.Fatalf("unexpected files: %#v", result.Items)
 	}
-	if items[0].Width == nil || *items[0].Width != 320 || items[0].Format != "jpg" {
-		t.Fatalf("expected extracted metadata, got %#v", items[0])
+	if result.Items[0].Width == nil || *result.Items[0].Width != 320 || result.Items[0].Format != "jpg" {
+		t.Fatalf("expected extracted metadata, got %#v", result.Items[0])
 	}
-	if items[0].QualityTier != "high" {
-		t.Fatalf("expected quality tier, got %#v", items[0])
+	if result.Items[0].QualityTier != "high" {
+		t.Fatalf("expected quality tier, got %#v", result.Items[0])
 	}
-	if items[0].QualityScore == nil || *items[0].QualityScore != 82 {
-		t.Fatalf("expected quality score, got %#v", items[0])
+	if result.Items[0].QualityScore == nil || *result.Items[0].QualityScore != 82 {
+		t.Fatalf("expected quality score, got %#v", result.Items[0])
 	}
-	if items[0].ReviewAction != "favorite" {
-		t.Fatalf("expected latest review action, got %#v", items[0])
+	if result.Items[0].ReviewAction != "favorite" {
+		t.Fatalf("expected latest review action, got %#v", result.Items[0])
 	}
-	if len(items[0].TagNames) != 2 || items[0].TagNames[0] != "单人写真" {
-		t.Fatalf("expected tag summary, got %#v", items[0].TagNames)
+	if len(result.Items[0].TagNames) != 2 || result.Items[0].TagNames[0] != "单人写真" {
+		t.Fatalf("expected tag summary, got %#v", result.Items[0].TagNames)
 	}
-	if !items[0].HasPreview {
-		t.Fatalf("expected preview flag, got %#v", items[0])
+	if !result.Items[0].HasPreview {
+		t.Fatalf("expected preview flag, got %#v", result.Items[0])
+	}
+	if result.HasMore || result.NextCursor != "" {
+		t.Fatalf("expected no extra page metadata, got %#v", result)
 	}
 	if !strings.Contains(normalizeSQL(queryer.query), normalizeSQL("from files")) {
 		t.Fatalf("unexpected query: %s", queryer.query)
@@ -93,14 +98,17 @@ func TestPostgresStoreListFilesSupportsSearchQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(queryer.args) != 12 || queryer.args[0] != "poster jpg" || queryer.args[1] != "" || queryer.args[2] != "" || queryer.args[3] != "" || queryer.args[4] != "" || queryer.args[5] != int64(0) || queryer.args[6] != "" || queryer.args[7] != "" || queryer.args[8] != "" || queryer.args[9] != "" || queryer.args[10] != 10 || queryer.args[11] != 0 {
+	if len(queryer.args) != 12 || queryer.args[0] != "poster jpg" || queryer.args[1] != "" || queryer.args[2] != "" || queryer.args[3] != "" || queryer.args[4] != "" || queryer.args[5] != int64(0) || queryer.args[6] != "" || queryer.args[7] != "" || queryer.args[8] != "" || queryer.args[9] != "" || queryer.args[10] != 11 || queryer.args[11] != 0 {
 		t.Fatalf("unexpected query args: %#v", queryer.args)
 	}
 	normalized := normalizeSQL(queryer.query)
 	expectedFragments := []string{
 		"left join search_documents sd on sd.file_id = f.id",
 		"websearch_to_tsquery('simple', $1)",
-		"where ($1 = '' or sd.tsv @@ websearch_to_tsquery('simple', $1))",
+		"sd.tsv @@ websearch_to_tsquery('simple', $1)",
+		"f.file_name ilike '%' || $1 || '%'",
+		"f.abs_path ilike '%' || $1 || '%'",
+		"sd.document_text ilike '%' || $1 || '%'",
 	}
 	for _, fragment := range expectedFragments {
 		if !strings.Contains(normalized, normalizeSQL(fragment)) {
@@ -130,7 +138,7 @@ func TestPostgresStoreListFilesSupportsStructuredFilters(t *testing.T) {
 	if len(queryer.args) != 12 {
 		t.Fatalf("expected 12 query args, got %#v", queryer.args)
 	}
-	expectedArgs := []any{"poster", "image", "high", "favorite", "active", int64(7), "", "", "", "", 15, 0}
+	expectedArgs := []any{"poster", "image", "high", "favorite", "active", int64(7), "", "", "", "", 16, 0}
 	for i, expected := range expectedArgs {
 		if queryer.args[i] != expected {
 			t.Fatalf("unexpected arg %d: want %#v got %#v", i, expected, queryer.args[i])
@@ -138,7 +146,10 @@ func TestPostgresStoreListFilesSupportsStructuredFilters(t *testing.T) {
 	}
 	normalized := normalizeSQL(queryer.query)
 	expectedFragments := []string{
-		"where ($1 = '' or sd.tsv @@ websearch_to_tsquery('simple', $1))",
+		"sd.tsv @@ websearch_to_tsquery('simple', $1)",
+		"or f.file_name ilike '%' || $1 || '%'",
+		"or f.abs_path ilike '%' || $1 || '%'",
+		"or sd.document_text ilike '%' || $1 || '%'",
 		"and ($2 = '' or f.media_type = $2)",
 		"and ($3 = '' or quality.quality_tier = $3)",
 		"and ($4 = '' or latest_review.action_type = $4)",
@@ -208,7 +219,7 @@ func TestPostgresStoreListFilesSupportsOffsetAndSort(t *testing.T) {
 	if len(queryer.args) != 12 {
 		t.Fatalf("expected 12 query args, got %#v", queryer.args)
 	}
-	if queryer.args[10] != 25 || queryer.args[11] != 50 {
+	if queryer.args[10] != 26 || queryer.args[11] != 50 {
 		t.Fatalf("unexpected paging args: %#v", queryer.args)
 	}
 	normalized := normalizeSQL(queryer.query)
@@ -238,8 +249,63 @@ func TestPostgresStoreListFilesSupportsQualitySort(t *testing.T) {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
 	normalized := normalizeSQL(queryer.query)
-	if !strings.Contains(normalized, normalizeSQL("order by quality.quality_score desc nulls last, f.updated_at desc, f.id desc")) {
+	if !strings.Contains(normalized, normalizeSQL("order by coalesce(quality.quality_score, -1) desc, f.updated_at desc, f.id desc")) {
 		t.Fatalf("expected quality sort, got %q", queryer.query)
+	}
+}
+
+func TestPostgresStoreListFilesSupportsCursorForUpdatedSort(t *testing.T) {
+	queryer := &recordingRowsQueryer{
+		rows: &staticFileRows{},
+	}
+	store := files.PostgresStore{Rows: queryer}
+	cursor, err := filesTestEncodeCursor("updated_desc", 7, "2026-04-13T12:00:00Z", 0, "", nil)
+	if err != nil {
+		t.Fatalf("expected cursor to encode: %v", err)
+	}
+
+	_, err = store.ListFiles(context.Background(), files.ListOptions{
+		Limit:  25,
+		Sort:   "updated_desc",
+		Cursor: cursor,
+	})
+	if err != nil {
+		t.Fatalf("expected list files to succeed: %v", err)
+	}
+	normalized := normalizeSQL(queryer.query)
+	if !strings.Contains(normalized, normalizeSQL("and (f.updated_at, f.id) < ($11::timestamptz, $12)")) {
+		t.Fatalf("expected updated cursor clause, got %q", queryer.query)
+	}
+	if len(queryer.args) != 14 || queryer.args[10] != "2026-04-13T12:00:00Z" || queryer.args[11] != int64(7) || queryer.args[12] != 26 || queryer.args[13] != 0 {
+		t.Fatalf("unexpected cursor args: %#v", queryer.args)
+	}
+}
+
+func TestPostgresStoreListFilesSupportsCursorForQualitySort(t *testing.T) {
+	queryer := &recordingRowsQueryer{
+		rows: &staticFileRows{},
+	}
+	store := files.PostgresStore{Rows: queryer}
+	quality := 82.0
+	cursor, err := filesTestEncodeCursor("quality_desc", 7, "2026-04-13T12:00:00Z", 0, "", &quality)
+	if err != nil {
+		t.Fatalf("expected cursor to encode: %v", err)
+	}
+
+	_, err = store.ListFiles(context.Background(), files.ListOptions{
+		Limit:  10,
+		Sort:   "quality_desc",
+		Cursor: cursor,
+	})
+	if err != nil {
+		t.Fatalf("expected list files to succeed: %v", err)
+	}
+	normalized := normalizeSQL(queryer.query)
+	if !strings.Contains(normalized, normalizeSQL("and (coalesce(quality.quality_score, -1), f.updated_at, f.id) < ($11, $12::timestamptz, $13)")) {
+		t.Fatalf("expected quality cursor clause, got %q", queryer.query)
+	}
+	if len(queryer.args) != 15 || queryer.args[10] != 82.0 || queryer.args[11] != "2026-04-13T12:00:00Z" || queryer.args[12] != int64(7) || queryer.args[13] != 11 || queryer.args[14] != 0 {
+		t.Fatalf("unexpected cursor args: %#v", queryer.args)
 	}
 }
 
@@ -709,4 +775,19 @@ func float64Ptr(v float64) *float64 {
 
 func int64Ptr(v int64) *int64 {
 	return &v
+}
+
+func filesTestEncodeCursor(sort string, id int64, updatedAt string, sizeBytes int64, fileName string, qualityKey *float64) (string, error) {
+	payload, err := json.Marshal(map[string]any{
+		"sort":        sort,
+		"id":          id,
+		"updated_at":  updatedAt,
+		"size_bytes":  sizeBytes,
+		"file_name":   fileName,
+		"quality_key": qualityKey,
+	})
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(payload), nil
 }

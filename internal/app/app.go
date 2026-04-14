@@ -46,6 +46,7 @@ type App struct {
 	fileContent    httpserver.FileContentProvider
 	fileTrasher    httpserver.FileTrasher
 	fileRevealer   httpserver.FileRevealer
+	fileOpener     httpserver.FileOpener
 	fileReviewer   httpserver.FileReviewer
 	fileTagCreator httpserver.FileTagCreator
 	fileJobRunner  httpserver.FileJobRunner
@@ -194,6 +195,11 @@ func (a *App) SetFileRevealer(provider httpserver.FileRevealer) {
 	a.refreshHandler()
 }
 
+func (a *App) SetFileOpener(provider httpserver.FileOpener) {
+	a.fileOpener = provider
+	a.refreshHandler()
+}
+
 func (a *App) SetFileReviewer(provider httpserver.FileReviewer) {
 	a.fileReviewer = provider
 	a.refreshHandler()
@@ -232,6 +238,7 @@ func (a *App) refreshHandler() {
 		FileContentProvider:    a.fileContent,
 		FileTrasher:            a.fileTrasher,
 		FileRevealer:           a.fileRevealer,
+		FileOpener:             a.fileOpener,
 		FileReviewer:           a.fileReviewer,
 		FileTagCreator:         a.fileTagCreator,
 		FileJobRunner:          a.fileJobRunner,

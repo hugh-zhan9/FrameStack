@@ -38,6 +38,7 @@ type FileHash struct {
 
 type DuplicateFile struct {
 	FileID        int64
+	Score         float64
 	Role          string
 	QualityScore  float64
 	QualityTier   string
@@ -234,6 +235,13 @@ func rankDuplicateFiles(files []DuplicateFile) []DuplicateFile {
 		}
 		ranked[index].Role = "duplicate_candidate"
 	}
+	topScore := duplicateQualityScore(ranked[0])
+	if topScore <= 0 {
+		topScore = 1
+	}
+	for index := range ranked {
+		ranked[index].Score = duplicateMemberScore(duplicateQualityScore(ranked[index]), topScore)
+	}
 	return ranked
 }
 
@@ -253,6 +261,21 @@ func duplicateQualityScore(file DuplicateFile) float64 {
 		score += 3
 	}
 	return score
+}
+
+func duplicateMemberScore(score float64, topScore float64) float64 {
+	if topScore <= 0 {
+		return 1
+	}
+	value := score / topScore
+	switch {
+	case value < 0:
+		return 0
+	case value > 1:
+		return 1
+	default:
+		return value
+	}
 }
 
 func ClusterTitle(sha256 string) string {

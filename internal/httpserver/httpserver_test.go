@@ -577,11 +577,11 @@ func TestFilesEndpointReturnsProviderFiles(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
-	var payload []httpserver.FileDTO
+	var payload httpserver.FileListResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("expected valid json: %v", err)
 	}
-	if len(payload) != 1 || payload[0].Width == nil || *payload[0].Width != 320 || payload[0].Format != "jpg" || payload[0].QualityScore == nil || *payload[0].QualityScore != 82 || payload[0].QualityTier != "high" || payload[0].ReviewAction != "favorite" || len(payload[0].TagNames) != 2 {
+	if len(payload.Items) != 1 || payload.Items[0].Width == nil || *payload.Items[0].Width != 320 || payload.Items[0].Format != "jpg" || payload.Items[0].QualityScore == nil || *payload.Items[0].QualityScore != 82 || payload.Items[0].QualityTier != "high" || payload.Items[0].ReviewAction != "favorite" || len(payload.Items[0].TagNames) != 2 {
 		t.Fatalf("unexpected files payload: %#v", payload)
 	}
 	if provider.lastRequest.Query != "" {
@@ -665,6 +665,33 @@ func TestFilesEndpointPassesOffsetAndSort(t *testing.T) {
 	}
 	if provider.lastRequest.Limit != 12 || provider.lastRequest.Offset != 24 || provider.lastRequest.Sort != "size_desc" {
 		t.Fatalf("unexpected request: %#v", provider.lastRequest)
+	}
+}
+
+func TestFilesEndpointPassesCursor(t *testing.T) {
+	provider := staticFileListProvider{nextCursor: "next-a", hasMore: true}
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		FileListProvider: &provider,
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/files?limit=12&cursor=cursor-a&sort=updated_desc", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if provider.lastRequest.Limit != 12 || provider.lastRequest.Cursor != "cursor-a" || provider.lastRequest.Sort != "updated_desc" {
+		t.Fatalf("unexpected request: %#v", provider.lastRequest)
+	}
+
+	var payload httpserver.FileListResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected valid json: %v", err)
+	}
+	if !payload.HasMore || payload.NextCursor != "next-a" {
+		t.Fatalf("unexpected payload: %#v", payload)
 	}
 }
 
@@ -954,6 +981,25 @@ func TestRevealFileEndpointInvokesProvider(t *testing.T) {
 	}
 }
 
+func TestOpenFileEndpointInvokesProvider(t *testing.T) {
+	provider := &staticFileOpenProvider{}
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		FileOpener: provider,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/files/7/open", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	if provider.fileID != 7 {
+		t.Fatalf("expected open provider to receive 7, got %d", provider.fileID)
+	}
+}
+
 func TestRecomputeEmbeddingsEndpointInvokesProvider(t *testing.T) {
 	provider := &staticFileJobRunner{}
 	mux := httpserver.NewMux(httpserver.Dependencies{
@@ -1218,13 +1264,19 @@ func (s *staticVolumeScanner) EnqueueVolumeScan(_ context.Context, volumeID int6
 
 type staticFileListProvider struct {
 	items       []httpserver.FileDTO
+	nextCursor string
+	hasMore    bool
 	err         error
 	lastRequest httpserver.FileListRequest
 }
 
-func (s *staticFileListProvider) ListFiles(_ context.Context, input httpserver.FileListRequest) ([]httpserver.FileDTO, error) {
+func (s *staticFileListProvider) ListFiles(_ context.Context, input httpserver.FileListRequest) (httpserver.FileListResponse, error) {
 	s.lastRequest = input
-	return s.items, s.err
+	return httpserver.FileListResponse{
+		Items:      s.items,
+		NextCursor: s.nextCursor,
+		HasMore:    s.hasMore,
+	}, s.err
 }
 
 type staticClusterListProvider struct {
@@ -1307,6 +1359,16 @@ type staticFileRevealProvider struct {
 }
 
 func (s *staticFileRevealProvider) RevealFile(_ context.Context, fileID int64) error {
+	s.fileID = fileID
+	return s.err
+}
+
+type staticFileOpenProvider struct {
+	fileID int64
+	err    error
+}
+
+func (s *staticFileOpenProvider) OpenFile(_ context.Context, fileID int64) error {
 	s.fileID = fileID
 	return s.err
 }

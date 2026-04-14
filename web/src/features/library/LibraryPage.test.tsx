@@ -35,6 +35,9 @@ describe("LibraryPage", () => {
       <LibraryPage
         files={files}
         loading={false}
+        loadingMore={false}
+        hasMore={true}
+        totalLoaded={files.length}
         selectedFileId={8}
         onSelectFile={() => {}}
         filters={{
@@ -42,9 +45,11 @@ describe("LibraryPage", () => {
           mediaType: "",
           qualityTier: "",
           status: "",
+          reviewAction: "",
           sort: "updated_desc"
         }}
         onFiltersChange={() => {}}
+        onLoadMore={() => {}}
       />
     );
 
@@ -56,5 +61,35 @@ describe("LibraryPage", () => {
     expect(screen.getAllByText("视频").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("媒体类型筛选")).toBeInTheDocument();
     expect(screen.getByLabelText("排序方式")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加载更多" })).toBeInTheDocument();
+    expect(screen.getByText("当前已加载 2 条资源")).toBeInTheDocument();
+    expect(screen.getByText("还有更多结果可继续加载")).toBeInTheDocument();
+  });
+
+  it("shows done state when all results are loaded", () => {
+    render(
+      <LibraryPage
+        files={files}
+        loading={false}
+        loadingMore={false}
+        hasMore={false}
+        totalLoaded={files.length}
+        selectedFileId={8}
+        onSelectFile={() => {}}
+        filters={{
+          query: "",
+          mediaType: "",
+          qualityTier: "",
+          status: "",
+          reviewAction: "",
+          sort: "updated_desc"
+        }}
+        onFiltersChange={() => {}}
+        onLoadMore={() => {}}
+      />
+    );
+
+    expect(screen.getByText("已加载完当前筛选结果")).toBeInTheDocument();
+    expect(screen.getByText("当前筛选结果已经全部展示完成")).toBeInTheDocument();
   });
 });

@@ -24,10 +24,18 @@ export type FetchFilesOptions = {
   mediaType?: string;
   qualityTier?: string;
   status?: string;
+  reviewAction?: string;
   sort?: string;
+  cursor?: string;
 };
 
-export async function fetchFiles(options: FetchFilesOptions = {}): Promise<FileItem[]> {
+export type FileListPage = {
+  items: FileItem[];
+  next_cursor?: string;
+  has_more: boolean;
+};
+
+export async function fetchFiles(options: FetchFilesOptions = {}): Promise<FileListPage> {
   const search = new URLSearchParams({
     limit: "24",
     sort: options.sort?.trim() || "updated_desc"
@@ -44,11 +52,31 @@ export async function fetchFiles(options: FetchFilesOptions = {}): Promise<FileI
   if (options.status?.trim()) {
     search.set("status", options.status.trim());
   }
-  return fetchJSON<FileItem[]>(`/api/files?${search.toString()}`);
+  if (options.reviewAction?.trim()) {
+    search.set("review_action", options.reviewAction.trim());
+  }
+  if (options.cursor?.trim()) {
+    search.set("cursor", options.cursor.trim());
+  }
+  return fetchJSON<FileListPage>(`/api/files?${search.toString()}`);
 }
 
 export async function fetchFileDetail(fileId: number): Promise<FileDetail> {
   return fetchJSON<FileDetail>(`/api/files/${fileId}`);
+}
+
+export async function openFileWithDefaultApp(fileId: number): Promise<void> {
+  const response = await fetch(`/api/files/${fileId}/open`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function moveFileToTrash(fileId: number): Promise<void> {
+  const response = await fetch(`/api/files/${fileId}/trash`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
 }
 
 export async function fetchSystemStatus(): Promise<SystemStatus> {
@@ -103,16 +131,52 @@ export async function fetchJobEvents(jobId: number): Promise<JobEvent[]> {
   return fetchJSON<JobEvent[]>(`/api/jobs/${jobId}/events`);
 }
 
-export async function fetchClusters(clusterType = ""): Promise<ClusterItem[]> {
+export async function fetchClusters(clusterType = "", clusterStatus = ""): Promise<ClusterItem[]> {
   const search = new URLSearchParams({ limit: "12" });
   if (clusterType.trim() !== "") {
     search.set("cluster_type", clusterType);
+  }
+  if (clusterStatus.trim() !== "") {
+    search.set("status", clusterStatus);
   }
   return fetchJSON<ClusterItem[]>(`/api/clusters?${search.toString()}`);
 }
 
 export async function fetchClusterDetail(clusterId: number): Promise<ClusterDetail> {
   return fetchJSON<ClusterDetail>(`/api/clusters/${clusterId}`);
+}
+
+export async function applyClusterReviewAction(clusterId: number, input: { action_type: string; note?: string }): Promise<void> {
+  const response = await fetch(`/api/clusters/${clusterId}/review-actions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function applyFileReviewAction(fileId: number, input: { action_type: string; note?: string }): Promise<void> {
+  const response = await fetch(`/api/files/${fileId}/review-actions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function updateClusterStatus(clusterId: number, status: string): Promise<void> {
+  const response = await fetch(`/api/clusters/${clusterId}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status })
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
 }
 
 async function readError(response: Response) {
