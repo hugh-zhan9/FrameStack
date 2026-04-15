@@ -1,5 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchFileDetail, fetchFiles, moveFileToTrash, openFileWithDefaultApp } from "../../lib/api";
+import {
+  fetchFileDetail,
+  fetchFiles,
+  moveFileToTrash,
+  openFileWithDefaultApp,
+  recomputeFileEmbeddings
+} from "../../lib/api";
 import { useAsync } from "../../lib/useAsync";
 import { LibraryPage } from "./LibraryPage";
 import type { FileItem } from "./types";
@@ -31,13 +37,17 @@ export function LibraryRoute() {
   const [selectedFileId, setSelectedFileId] = useState<number | null>(null);
   const [filters, setFilters] = useState<LibraryFilters>(defaultFilters);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [openPending, setOpenPending] = useState(false);
   const [trashPending, setTrashPending] = useState(false);
+  const [analysisPending, setAnalysisPending] = useState(false);
+  const [detailRefreshToken, setDetailRefreshToken] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     fetchFiles(filters)
       .then((page) => {
@@ -101,7 +111,7 @@ export function LibraryRoute() {
       }
       return fetchFileDetail(selectedFileId);
     },
-    [selectedFileId]
+    [selectedFileId, detailRefreshToken]
   );
   const detail = detailState.data;
 
@@ -111,6 +121,7 @@ export function LibraryRoute() {
     }
     setOpenPending(true);
     setError(null);
+    setNotice(null);
     try {
       await openFileWithDefaultApp(detail.id);
     } catch (err) {
@@ -126,6 +137,7 @@ export function LibraryRoute() {
     }
     setTrashPending(true);
     setError(null);
+    setNotice(null);
     try {
       await moveFileToTrash(detail.id);
       setFiles((current) => current.filter((item) => item.id !== detail.id));
@@ -140,6 +152,24 @@ export function LibraryRoute() {
       setError(err instanceof Error ? err.message : "移动到废纸篓失败");
     } finally {
       setTrashPending(false);
+    }
+  }
+
+  async function handleRecomputeAnalysis() {
+    if (!detail || analysisPending) {
+      return;
+    }
+    setAnalysisPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await recomputeFileEmbeddings(detail.id);
+      setNotice("已提交 AI 分析任务，可到任务页查看进度。");
+      setDetailRefreshToken((current) => current + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "提交 AI 分析任务失败");
+    } finally {
+      setAnalysisPending(false);
     }
   }
 
@@ -160,6 +190,7 @@ export function LibraryRoute() {
       />
       <aside className="detail-panel">
         <h3>文件详情</h3>
+        {notice ? <p>{notice}</p> : null}
         {detailState.loading ? <p>正在加载详情…</p> : null}
         {detailState.error ? <p>{detailState.error}</p> : null}
         {detail ? (
@@ -170,6 +201,14 @@ export function LibraryRoute() {
               className="detail-preview"
             />
             <div className="detail-actions">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={handleRecomputeAnalysis}
+                disabled={analysisPending}
+              >
+                {analysisPending ? "提交中…" : "重新 AI 分析"}
+              </button>
               <button type="button" className="primary-button" onClick={handleOpenFile} disabled={openPending}>
                 {openPending ? "打开中…" : "默认程序打开"}
               </button>

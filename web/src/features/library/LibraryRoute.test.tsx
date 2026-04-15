@@ -78,6 +78,9 @@ describe("LibraryRoute", () => {
       if (url === "/api/files/7/open") {
         return new Response(null, { status: 204 });
       }
+      if (url === "/api/files/7/recompute-embeddings") {
+        return new Response(null, { status: 202 });
+      }
       throw new Error(`unexpected url: ${url}`);
     });
 
@@ -89,6 +92,12 @@ describe("LibraryRoute", () => {
     await waitFor(() => expect(screen.getByText("real-a.jpg")).toBeInTheDocument());
     expect(screen.getAllByAltText(/real-a\.jpg/).length).toBeGreaterThan(0);
     await waitFor(() => expect(screen.getByText("文件详情")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "重新 AI 分析" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "重新 AI 分析" }));
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith("/api/files/7/recompute-embeddings", { method: "POST" })
+    );
+    await waitFor(() => expect(screen.getByText("已提交 AI 分析任务，可到任务页查看进度。")).toBeInTheDocument());
     await waitFor(() => expect(screen.getByRole("button", { name: "默认程序打开" })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "默认程序打开" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/files/7/open", { method: "POST" }));

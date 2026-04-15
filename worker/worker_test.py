@@ -1,7 +1,15 @@
+import json
 import unittest
 from unittest import mock
 
-from worker.main import build_understanding_prompt, embed_media, handle_message, understand_media
+from worker.main import (
+    build_understanding_prompt,
+    normalize_understanding_result,
+    embed_media,
+    handle_message,
+    parse_json_object_text,
+    understand_media,
+)
 
 
 def vector_dims(value: str) -> int:
@@ -121,6 +129,140 @@ class WorkerProtocolTest(unittest.TestCase):
         self.assertEqual("ollama", payload["raw_response"]["requested_provider"])
         self.assertIn("provider down", payload["raw_response"]["fallback_reason"])
 
+    def test_understand_media_uses_lm_studio_with_loaded_vision_model(self):
+        def fake_http_get_json(url, timeout):
+            self.assertEqual("http://127.0.0.1:1234/v1/models", url)
+            return {
+                "data": [
+                    {"id": "qwen2.5-vl-7b"},
+                    {"id": "text-embedding-nomic-embed-text-v1.5"},
+                ]
+            }
+
+        def fake_http_post_json(url, body, headers, timeout):
+            self.assertEqual("http://127.0.0.1:1234/v1/chat/completions", url)
+            self.assertEqual("qwen2.5-vl-7b", body["model"])
+            self.assertNotIn("response_format", body)
+            return {
+                "model": "qwen2.5-vl-7b",
+                "choices": [
+                    {
+                        "message": {
+                            "content": """
+                            ```json
+                            {
+                              "raw_tags": ["视频", "室内"],
+                              "canonical_candidates": [{"namespace":"content","name":"视频","confidence":0.91}],
+                              "summary": "室内视频画面。",
+                              "sensitive_tags": [],
+                              "quality_hints": ["清晰"],
+                              "structured_attributes": {"media_type":"video"},
+                              "confidence": 0.87
+                            }
+                            ```
+                            """
+                        }
+                    }
+                ]
+            }
+
+        payload = understand_media(
+            {
+                "file_id": 11,
+                "media_type": "video",
+                "file_path": "/Volumes/media/video/clip.mp4",
+                "frame_paths": ["/tmp/frame-1.jpg"],
+                "context": {"language": "zh-CN", "max_tags": 8, "allow_sensitive_labels": True},
+            },
+            env={
+                "IDEA_WORKER_PROVIDER": "lm_studio",
+                "IDEA_WORKER_LM_STUDIO_URL": "http://127.0.0.1:1234",
+                "IDEA_WORKER_LM_STUDIO_MODEL": "qwen2.5-vl-7b",
+            },
+            http_post_json=fake_http_post_json,
+            http_get_json=fake_http_get_json,
+        )
+
+        self.assertEqual("lm_studio", payload["provider"])
+        self.assertEqual("qwen2.5-vl-7b", payload["model"])
+        self.assertEqual("室内视频画面。", payload["summary"])
+        self.assertEqual("视频", payload["canonical_candidates"][0]["name"])
+
+    def test_understand_media_lm_studio_reports_missing_vision_model_clearly(self):
+        payload = understand_media(
+            {
+                "file_id": 12,
+                "media_type": "video",
+                "file_path": "/Volumes/media/video/clip.mp4",
+                "frame_paths": ["/tmp/frame-1.jpg"],
+                "context": {"language": "zh-CN", "max_tags": 8, "allow_sensitive_labels": True},
+            },
+            env={
+                "IDEA_WORKER_PROVIDER": "lm_studio",
+                "IDEA_WORKER_LM_STUDIO_URL": "http://127.0.0.1:1234",
+                "IDEA_WORKER_LM_STUDIO_MODEL": "qwen2.5-vl-7b",
+            },
+            http_get_json=mock.Mock(return_value={
+                "data": [
+                    {"id": "huihui-qwen3.5-9b-abliterated"},
+                    {"id": "text-embedding-nomic-embed-text-v1.5"},
+                ]
+            }),
+            http_post_json=mock.Mock(side_effect=RuntimeError("model cannot process images")),
+        )
+
+        self.assertEqual("placeholder", payload["provider"])
+        self.assertEqual("lm_studio", payload["raw_response"]["requested_provider"])
+        self.assertIn("model cannot process images", payload["raw_response"]["fallback_reason"])
+
+    def test_understand_media_lm_studio_falls_back_to_first_loaded_chat_model(self):
+        def fake_http_post_json(url, body, headers, timeout):
+            self.assertEqual("huihui-qwen3.5-9b-abliterated", body["model"])
+            return {
+                "model": "huihui-qwen3.5-9b-abliterated",
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({
+                                "raw_tags": ["图片"],
+                                "canonical_candidates": [{"namespace": "content", "name": "图片", "confidence": 0.8}],
+                                "summary": "图片画面。",
+                                "sensitive_tags": [],
+                                "quality_hints": [],
+                                "structured_attributes": {"media_type": "image"},
+                                "confidence": 0.8,
+                            })
+                        }
+                    }
+                ]
+            }
+
+        payload = understand_media(
+            {
+                "file_id": 13,
+                "media_type": "image",
+                "file_path": "/Volumes/media/photos/poster.jpg",
+                "frame_paths": [],
+                "context": {"language": "zh-CN", "max_tags": 8, "allow_sensitive_labels": True},
+            },
+            env={
+                "IDEA_WORKER_PROVIDER": "lm_studio",
+                "IDEA_WORKER_LM_STUDIO_URL": "http://127.0.0.1:1234",
+                "IDEA_WORKER_LM_STUDIO_MODEL": "qwen2.5-vl-7b",
+            },
+            http_get_json=mock.Mock(return_value={
+                "data": [
+                    {"id": "huihui-qwen3.5-9b-abliterated"},
+                    {"id": "text-embedding-nomic-embed-text-v1.5"},
+                ]
+            }),
+            http_post_json=fake_http_post_json,
+        )
+
+        self.assertEqual("lm_studio", payload["provider"])
+        self.assertEqual("huihui-qwen3.5-9b-abliterated", payload["model"])
+        self.assertEqual("图片画面。", payload["summary"])
+
     def test_embed_media_returns_pixel_vectors_when_reader_succeeds(self):
         payload = embed_media(
             {
@@ -194,6 +336,8 @@ class WorkerProtocolTest(unittest.TestCase):
         self.assertIn("content, quality, sensitive, person, management", prompt)
         self.assertIn("structured_attributes 尽量包含：media_type, subject_count, capture_type, orientation, has_face, is_sensitive", prompt)
         self.assertIn("allow_sensitive_labels=true", prompt)
+        self.assertIn("默认都使用简体中文", prompt)
+        self.assertIn("canonical_candidates 必须返回 1-5 个有效候选", prompt)
 
     def test_embed_media_semantic_builds_frame_vectors_for_video(self):
         def fake_http_post_json(url, body, headers, timeout):
@@ -295,6 +439,65 @@ class WorkerProtocolTest(unittest.TestCase):
 
         self.assertEqual("qwen2.5-vl-7b", response["payload"]["providers"][0]["default_model"])
         self.assertEqual("qwen3-vl-8b", response["payload"]["providers"][1]["default_model"])
+
+    def test_parse_json_object_text_extracts_embedded_json(self):
+        payload = parse_json_object_text("说明文字\n{\"ok\": true, \"value\": 2}\n更多说明")
+
+        self.assertEqual({"ok": True, "value": 2}, payload)
+
+    def test_normalize_understanding_result_derives_candidates_when_missing(self):
+        payload = normalize_understanding_result(
+            {
+                "raw_tags": [
+                    "/Volumes/media/bad-path.mp4",
+                    "JK",
+                    "Glasses",
+                    "DarkMode",
+                ],
+                "canonical_candidates": None,
+                "summary": "english summary",
+                "structured_attributes": {
+                    "media_type": "video",
+                    "subject_count": "single",
+                    "capture_type": "CloseUp",
+                    "is_sensitive": True,
+                },
+                "confidence": 0.85,
+            },
+            provider="lm_studio",
+        )
+
+        self.assertEqual(["JK", "Glasses", "DarkMode"], payload["raw_tags"])
+        names = [item["name"] for item in payload["canonical_candidates"]]
+        self.assertIn("视频", names)
+        self.assertIn("单人", names)
+        self.assertIn("特写", names)
+        self.assertIn("敏感内容", names)
+
+    def test_build_image_inputs_respects_max_images(self):
+        from worker.main import build_image_inputs
+
+        with mock.patch("worker.main.encode_file_base64", side_effect=["img-1", "img-2", "img-3"]) as encode:
+            images = build_image_inputs(
+                {"media_type": "video", "frame_paths": ["/tmp/a.jpg", "/tmp/b.jpg", "/tmp/c.jpg"]},
+                max_images=1,
+            )
+
+        self.assertEqual(["img-1"], images)
+        self.assertEqual(1, encode.call_count)
+
+    def test_build_image_inputs_passes_resize_option(self):
+        from worker.main import build_image_inputs
+
+        with mock.patch("worker.main.encode_file_base64", return_value="img-1") as encode:
+            images = build_image_inputs(
+                {"media_type": "video", "frame_paths": ["/tmp/a.jpg"]},
+                max_images=1,
+                resize_max_edge=384,
+            )
+
+        self.assertEqual(["img-1"], images)
+        encode.assert_called_once_with("/tmp/a.jpg", resize_max_edge=384)
 
     def test_unknown_message_type_returns_retryable_false(self):
         response = handle_message({

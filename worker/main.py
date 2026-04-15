@@ -2,15 +2,16 @@ import json
 import hashlib
 import mimetypes
 import os
+import re
 import subprocess
 import sys
 import urllib.error
 import urllib.request
 from base64 import b64encode
-from typing import Any
+from typing import Any, Optional
 
 
-def get_declared_providers(env: dict[str, str] | None = None) -> list[dict[str, Any]]:
+def get_declared_providers(env: Optional[dict[str, str]] = None) -> list[dict[str, Any]]:
     values = os.environ if env is None else env
     return [
         {
@@ -72,8 +73,9 @@ def build_placeholder_understanding(payload: dict[str, Any]) -> dict[str, Any]:
 
 def understand_media(
     payload: dict[str, Any],
-    env: dict[str, str] | None = None,
-    http_post_json: Any | None = None,
+    env: Optional[dict[str, str]] = None,
+    http_post_json: Optional[Any] = None,
+    http_get_json: Optional[Any] = None,
 ) -> dict[str, Any]:
     values = os.environ if env is None else env
     provider = values.get("IDEA_WORKER_PROVIDER", "placeholder").strip() or "placeholder"
@@ -82,11 +84,12 @@ def understand_media(
         return build_placeholder_understanding(payload)
 
     request_func = http_post_json or post_json
+    get_request_func = http_get_json or get_json
     try:
         if provider == "ollama":
             result = call_ollama(payload, values, request_func)
         elif provider == "lm_studio":
-            result = call_lm_studio(payload, values, request_func)
+            result = call_lm_studio(payload, values, request_func, get_request_func)
         else:
             raise RuntimeError(f"unsupported provider: {provider}")
         return normalize_understanding_result(result, provider=provider)
@@ -313,9 +316,9 @@ def build_semantic_embeddings(
 
 def embed_media(
     payload: dict[str, Any],
-    env: dict[str, str] | None = None,
-    vector_reader: Any | None = None,
-    http_post_json: Any | None = None,
+    env: Optional[dict[str, str]] = None,
+    vector_reader: Optional[Any] = None,
+    http_post_json: Optional[Any] = None,
 ) -> dict[str, Any]:
     values = os.environ if env is None else env
     provider = values.get("IDEA_WORKER_EMBED_PROVIDER", "pixel").strip() or "pixel"
@@ -358,7 +361,7 @@ def embed_media(
 def call_ollama(payload: dict[str, Any], env: dict[str, str], http_post_json: Any) -> dict[str, Any]:
     base_url = env.get("IDEA_WORKER_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     model = env.get("IDEA_WORKER_OLLAMA_MODEL", "qwen3-vl-8b")
-    timeout = float(env.get("IDEA_WORKER_PROVIDER_TIMEOUT_SEC", "60"))
+    timeout = float(env.get("IDEA_WORKER_PROVIDER_TIMEOUT_SEC", "600"))
     body = {
         "model": model,
         "stream": False,
@@ -386,17 +389,20 @@ def call_ollama(payload: dict[str, Any], env: dict[str, str], http_post_json: An
     return result
 
 
-def call_lm_studio(payload: dict[str, Any], env: dict[str, str], http_post_json: Any) -> dict[str, Any]:
+def call_lm_studio(payload: dict[str, Any], env: dict[str, str], http_post_json: Any, http_get_json: Any) -> dict[str, Any]:
     base_url = env.get("IDEA_WORKER_LM_STUDIO_URL", "http://127.0.0.1:1234").rstrip("/")
-    model = env.get("IDEA_WORKER_LM_STUDIO_MODEL", "qwen2.5-vl-7b")
-    timeout = float(env.get("IDEA_WORKER_PROVIDER_TIMEOUT_SEC", "60"))
+    configured_model = env.get("IDEA_WORKER_LM_STUDIO_MODEL", "qwen2.5-vl-7b").strip() or "qwen2.5-vl-7b"
+    timeout = float(env.get("IDEA_WORKER_PROVIDER_TIMEOUT_SEC", "600"))
+    loaded_models = list_lm_studio_models(base_url, timeout, http_get_json)
+    model = resolve_lm_studio_model(configured_model, loaded_models)
+    max_images = int(env.get("IDEA_WORKER_LM_STUDIO_MAX_IMAGES", "3") or 3)
+    image_max_edge = int(env.get("IDEA_WORKER_LM_STUDIO_IMAGE_MAX_EDGE", "384") or 384)
     body = {
         "model": model,
-        "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "user",
-                "content": build_lm_studio_content(payload),
+                "content": build_lm_studio_content(payload, max_images=max_images, resize_max_edge=image_max_edge),
             }
         ],
     }
@@ -409,19 +415,20 @@ def call_lm_studio(payload: dict[str, Any], env: dict[str, str], http_post_json:
     choices = response.get("choices") or []
     if not choices:
         raise RuntimeError("lm studio response did not include choices")
-    message = (choices[0].get("message") or {}).get("content")
-    if not isinstance(message, str) or not message.strip():
-        raise RuntimeError("lm studio response did not include message content")
-    result = json.loads(message)
+    message = choices[0].get("message") or {}
+    content = extract_message_text_content(message)
+    if not content:
+        raise RuntimeError(f"lm studio response did not include usable message content: keys={sorted(message.keys())}")
+    result = parse_json_object_text(content)
     result.setdefault("provider", "lm_studio")
-    result.setdefault("model", model)
+    result.setdefault("model", response.get("model") or model)
     return result
 
 
 def normalize_understanding_result(payload: dict[str, Any], provider: str) -> dict[str, Any]:
-    raw_tags = [str(item).strip() for item in payload.get("raw_tags", []) if str(item).strip()]
+    raw_tags = sanitize_raw_tags(payload.get("raw_tags", []) or [])
     canonical_candidates = []
-    for item in payload.get("canonical_candidates", []):
+    for item in payload.get("canonical_candidates") or []:
         if not isinstance(item, dict):
             continue
         namespace = str(item.get("namespace", "")).strip()
@@ -433,6 +440,9 @@ def normalize_understanding_result(payload: dict[str, Any], provider: str) -> di
             "name": name,
             "confidence": to_confidence(item.get("confidence")),
         })
+    structured_attributes = payload.get("structured_attributes", {}) if isinstance(payload.get("structured_attributes", {}), dict) else {}
+    if not canonical_candidates:
+        canonical_candidates = derive_canonical_candidates(raw_tags, structured_attributes)
 
     return {
         "raw_tags": raw_tags,
@@ -440,7 +450,7 @@ def normalize_understanding_result(payload: dict[str, Any], provider: str) -> di
         "summary": str(payload.get("summary", "")).strip(),
         "sensitive_tags": [str(item).strip() for item in payload.get("sensitive_tags", []) if str(item).strip()],
         "quality_hints": [str(item).strip() for item in payload.get("quality_hints", []) if str(item).strip()],
-        "structured_attributes": payload.get("structured_attributes", {}) if isinstance(payload.get("structured_attributes", {}), dict) else {},
+        "structured_attributes": structured_attributes,
         "confidence": to_confidence(payload.get("confidence"), fallback=0.5),
         "provider": str(payload.get("provider", provider)).strip() or provider,
         "model": str(payload.get("model", "")).strip(),
@@ -468,12 +478,19 @@ def build_understanding_prompt(payload: dict[str, Any]) -> str:
         "例如 长发女性候选、短发男性候选、纹身男性候选、双人组合候选。"
         "structured_attributes 尽量包含：media_type, subject_count, capture_type, orientation, has_face, is_sensitive。"
         "summary 要简洁直白，避免含糊表达。"
+        "所有 summary、raw_tags、canonical_candidates.name，以及 structured_attributes 里的字符串值，默认都使用简体中文。"
+        "不要输出英文标签，不要把文件路径、目录名、盘符路径、URL 当成标签或摘要内容。"
+        "canonical_candidates 必须返回 1-5 个有效候选，不能为 null。"
         f" language={language}; max_tags={max_tags}; media_type={media_type}; file_path={file_path};"
         f" allow_sensitive_labels={str(allow_sensitive_labels).lower()}."
     )
 
 
-def build_image_inputs(payload: dict[str, Any]) -> list[str]:
+def build_image_inputs(
+    payload: dict[str, Any],
+    max_images: Optional[int] = None,
+    resize_max_edge: Optional[int] = None,
+) -> list[str]:
     image_paths = []
     media_type = str(payload.get("media_type", "")).strip().lower()
     file_path = str(payload.get("file_path", "")).strip()
@@ -485,16 +502,21 @@ def build_image_inputs(payload: dict[str, Any]) -> list[str]:
             image_paths.append(text)
 
     encoded = []
-    for path in image_paths[:6]:
-        encoded_item = encode_file_base64(path)
+    limit = 6 if max_images is None or max_images <= 0 else max_images
+    for path in image_paths[:limit]:
+        encoded_item = encode_file_base64(path, resize_max_edge=resize_max_edge)
         if encoded_item:
             encoded.append(encoded_item)
     return encoded
 
 
-def build_lm_studio_content(payload: dict[str, Any]) -> list[dict[str, Any]]:
+def build_lm_studio_content(
+    payload: dict[str, Any],
+    max_images: Optional[int] = None,
+    resize_max_edge: Optional[int] = None,
+) -> list[dict[str, Any]]:
     content = [{"type": "text", "text": build_understanding_prompt(payload)}]
-    for encoded_item in build_image_inputs(payload):
+    for encoded_item in build_image_inputs(payload, max_images=max_images, resize_max_edge=resize_max_edge):
         content.append({
             "type": "image_url",
             "image_url": {"url": encoded_item},
@@ -502,16 +524,60 @@ def build_lm_studio_content(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return content
 
 
-def encode_file_base64(path: str) -> str:
+def encode_file_base64(path: str, resize_max_edge: Optional[int] = None) -> str:
     try:
-        with open(path, "rb") as handle:
-            raw = handle.read()
+        raw, mime_type = read_file_for_base64(path, resize_max_edge=resize_max_edge)
     except OSError:
         return ""
-    mime_type, _ = mimetypes.guess_type(path)
     if not mime_type:
         mime_type = "application/octet-stream"
     return f"data:{mime_type};base64,{b64encode(raw).decode('ascii')}"
+
+
+def read_file_for_base64(path: str, resize_max_edge: Optional[int] = None) -> tuple[bytes, str]:
+    if resize_max_edge is not None and resize_max_edge > 0:
+        process = subprocess.run(
+            [
+                os.environ.get("IDEA_WORKER_FFMPEG_BIN", "ffmpeg"),
+                "-v",
+                "error",
+                "-i",
+                path,
+                "-vf",
+                f"scale='if(gt(iw,ih),min({resize_max_edge},iw),-2)':'if(gt(iw,ih),-2,min({resize_max_edge},ih))'",
+                "-frames:v",
+                "1",
+                "-q:v",
+                "8",
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "mjpeg",
+                "-",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if process.returncode == 0 and process.stdout:
+            return process.stdout, "image/jpeg"
+
+    with open(path, "rb") as handle:
+        raw = handle.read()
+    mime_type, _ = mimetypes.guess_type(path)
+    return raw, mime_type or "application/octet-stream"
+
+
+def get_json(url: str, timeout: float) -> dict[str, Any]:
+    request = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"http {exc.code}: {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"provider unavailable: {exc.reason}") from exc
 
 
 def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: float) -> dict[str, Any]:
@@ -529,6 +595,211 @@ def post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: 
         raise RuntimeError(f"http {exc.code}: {detail}") from exc
     except urllib.error.URLError as exc:
         raise RuntimeError(f"provider unavailable: {exc.reason}") from exc
+
+
+def list_lm_studio_models(base_url: str, timeout: float, http_get_json: Any) -> list[str]:
+    response = http_get_json(f"{base_url}/v1/models", timeout)
+    items = response.get("data") or []
+    models = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id", "")).strip()
+        if model_id:
+            models.append(model_id)
+    return models
+
+
+def resolve_lm_studio_model(configured_model: str, loaded_models: list[str]) -> str:
+    if configured_model and configured_model in loaded_models:
+        return configured_model
+    for model in loaded_models:
+        if not is_probably_embedding_model(model):
+            return model
+    for model in loaded_models:
+        if is_probably_vision_model(model):
+            return model
+    loaded_text = ", ".join(loaded_models) if loaded_models else "(none)"
+    raise RuntimeError(
+        f"configured lm_studio model {configured_model} is not loaded and no usable chat model is available; loaded_models={loaded_text}"
+    )
+
+
+def is_probably_vision_model(model_name: str) -> bool:
+    value = str(model_name or "").strip().lower()
+    return any(token in value for token in (
+        "vl",
+        "vision",
+        "llava",
+        "minicpm-v",
+        "internvl",
+        "glm-4v",
+        "qvq",
+        "phi-3.5-vision",
+    ))
+
+
+def is_probably_embedding_model(model_name: str) -> bool:
+    value = str(model_name or "").strip().lower()
+    return "embed" in value or "embedding" in value
+
+
+def extract_message_text_content(message: dict[str, Any]) -> str:
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type", "")).strip() == "text":
+                text = str(item.get("text", "")).strip()
+                if text:
+                    parts.append(text)
+        return "\n".join(parts).strip()
+    if isinstance(content, dict):
+        text = str(content.get("text", "")).strip()
+        if text:
+            return text
+    return ""
+
+
+def parse_json_object_text(text: str) -> dict[str, Any]:
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        candidate = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", candidate)
+        candidate = re.sub(r"\s*```$", "", candidate)
+        candidate = candidate.strip()
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(candidate[start:end + 1])
+        raise
+
+
+def sanitize_raw_tags(items: list[Any]) -> list[str]:
+    result = []
+    for item in items:
+        text = str(item).strip()
+        if not text:
+            continue
+        if looks_like_path(text):
+            continue
+        result.append(text)
+    return result
+
+
+def looks_like_path(value: str) -> bool:
+    text = value.strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if "://" in lowered:
+        return True
+    if "/" in text or "\\" in text:
+        return True
+    return len(text) > 2 and text[1:3] == ":\\"
+
+
+def derive_canonical_candidates(raw_tags: list[str], structured_attributes: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(namespace: str, name: str, confidence: float) -> None:
+        namespace = str(namespace).strip()
+        name = str(name).strip()
+        if not namespace or not name:
+            return
+        key = f"{namespace}:{name}"
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append({
+            "namespace": namespace,
+            "name": name,
+            "confidence": confidence,
+        })
+
+    media_type = string_value(structured_attributes.get("media_type")).lower()
+    if media_type == "video":
+        add("content", "视频", 0.7)
+    elif media_type == "image":
+        add("content", "图片", 0.7)
+
+    subject_count = string_value(structured_attributes.get("subject_count")).lower()
+    if subject_count in ("1", "single", "one"):
+        add("content", "单人", 0.65)
+    elif subject_count in ("2", "two", "couple"):
+        add("content", "双人", 0.65)
+    elif subject_count in ("multiple", "many", "group"):
+        add("content", "多人", 0.65)
+
+    capture_type = string_value(structured_attributes.get("capture_type")).lower()
+    if capture_type in ("closeup", "close_up", "close-up"):
+        add("content", "特写", 0.6)
+    elif capture_type in ("selfie",):
+        add("content", "自拍", 0.7)
+
+    if truthy_value(structured_attributes.get("is_sensitive")):
+        add("sensitive", "敏感内容", 0.75)
+
+    for tag in raw_tags:
+        normalized = normalize_tag_candidate_name(tag)
+        if not normalized:
+            continue
+        namespace = infer_candidate_namespace(normalized)
+        add(namespace, normalized, 0.6)
+
+    return candidates[:5]
+
+
+def normalize_tag_candidate_name(tag: str) -> str:
+    value = str(tag).strip()
+    lowered = value.lower()
+    mapping = {
+        "jk": "JK",
+        "glasses": "眼镜",
+        "straps": "束缚元素",
+        "darkmode": "暗色画面",
+        "dark mode": "暗色画面",
+        "closeup": "特写",
+        "close-up": "特写",
+        "close_up": "特写",
+        "video": "视频",
+        "image": "图片",
+    }
+    if lowered in mapping:
+        return mapping[lowered]
+    if looks_like_path(value):
+        return ""
+    return value
+
+
+def infer_candidate_namespace(name: str) -> str:
+    if name in ("敏感内容", "成人视频", "成人内容", "性行为", "束缚元素"):
+        return "sensitive"
+    if name in ("暗色画面", "低照度", "模糊", "清晰"):
+        return "quality"
+    return "content"
+
+
+def string_value(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    return str(value).strip()
+
+
+def truthy_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = string_value(value).lower()
+    return text in ("true", "1", "yes", "on")
 
 
 def to_confidence(value: Any, fallback: float = 0.0) -> float:

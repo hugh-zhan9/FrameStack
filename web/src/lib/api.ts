@@ -79,6 +79,13 @@ export async function moveFileToTrash(fileId: number): Promise<void> {
   }
 }
 
+export async function recomputeFileEmbeddings(fileId: number): Promise<void> {
+  const response = await fetch(`/api/files/${fileId}/recompute-embeddings`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   return fetchJSON<SystemStatus>("/api/system-status");
 }
