@@ -13,7 +13,9 @@ const files: FileItem[] = [
     updated_at: "2026-04-13T12:00:00Z",
     has_preview: true,
     tag_names: ["单人", "写真"],
-    quality_tier: "high"
+    quality_tier: "high",
+    width: 900,
+    height: 1600
   },
   {
     id: 8,
@@ -25,12 +27,15 @@ const files: FileItem[] = [
     updated_at: "2026-04-13T12:10:00Z",
     has_preview: true,
     tag_names: ["视频"],
-    quality_tier: "medium"
+    quality_tier: "medium",
+    width: 1920,
+    height: 1080,
+    duration_ms: 73000
   }
 ];
 
 describe("LibraryPage", () => {
-  it("renders preview-first media cards with media badges", () => {
+  it("renders preview-first media cards with adaptive preview ratios and auto-load hint", () => {
     render(
       <LibraryPage
         files={files}
@@ -49,21 +54,35 @@ describe("LibraryPage", () => {
           sort: "updated_desc"
         }}
         onFiltersChange={() => {}}
-        onLoadMore={() => {}}
       />
     );
 
     expect(screen.getByRole("heading", { name: "资源库" })).toBeInTheDocument();
     expect(screen.getByText("sample-a.jpg")).toBeInTheDocument();
     expect(screen.getByText("sample-b.mp4")).toBeInTheDocument();
+    expect(screen.getByText("规格等级按分辨率、码率、帧率等技术指标粗分，不代表审美质量。")).toBeInTheDocument();
     expect(screen.getAllByText("可预览").length).toBeGreaterThan(0);
     expect(screen.getAllByText("图片").length).toBeGreaterThan(0);
     expect(screen.getAllByText("视频").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("高规格").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("中规格").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("在库").length).toBeGreaterThan(0);
+    expect(screen.queryByText("high")).not.toBeInTheDocument();
+    expect(screen.queryByText("medium")).not.toBeInTheDocument();
+    expect(screen.queryByText("active")).not.toBeInTheDocument();
     expect(screen.getByLabelText("媒体类型筛选")).toBeInTheDocument();
+    expect(screen.getByLabelText("技术规格等级筛选")).toBeInTheDocument();
     expect(screen.getByLabelText("排序方式")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "加载更多" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "已忽略" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
     expect(screen.getByText("当前已加载 2 条资源")).toBeInTheDocument();
-    expect(screen.getByText("还有更多结果可继续加载")).toBeInTheDocument();
+    expect(screen.getByText("继续向下滚动，自动加载更多资源")).toBeInTheDocument();
+    expect(screen.getByText("900 × 1600")).toBeInTheDocument();
+    expect(screen.getByText("1m 13s")).toBeInTheDocument();
+
+    const previews = screen.getAllByTestId("library-media-preview");
+    expect(previews[0]).toHaveStyle("--preview-aspect: 900 / 1600");
+    expect(previews[1]).toHaveStyle("--preview-aspect: 1920 / 1080");
   });
 
   it("shows done state when all results are loaded", () => {
@@ -85,11 +104,10 @@ describe("LibraryPage", () => {
           sort: "updated_desc"
         }}
         onFiltersChange={() => {}}
-        onLoadMore={() => {}}
       />
     );
 
-    expect(screen.getByText("已加载完当前筛选结果")).toBeInTheDocument();
+    expect(screen.getByText("当前筛选结果已经全部加载完成")).toBeInTheDocument();
     expect(screen.getByText("当前筛选结果已经全部展示完成")).toBeInTheDocument();
   });
 });

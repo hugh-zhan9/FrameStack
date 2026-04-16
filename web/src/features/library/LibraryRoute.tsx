@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   fetchFileDetail,
   fetchFiles,
@@ -6,6 +6,22 @@ import {
   openFileWithDefaultApp,
   recomputeFileEmbeddings
 } from "../../lib/api";
+import {
+  formatAnalysisSummary,
+  formatAnalysisType,
+  formatClusterLabel,
+  formatClusterMeta,
+  formatFileStatus,
+  formatMediaType,
+  formatPathEvent,
+  formatPathHistorySummary,
+  formatQualityScore,
+  formatQualityTier,
+  formatReviewAction,
+  formatReviewActionSummary,
+  formatUnknown,
+  QUALITY_TIER_NOTE
+} from "./presentation";
 import { useAsync } from "../../lib/useAsync";
 import { LibraryPage } from "./LibraryPage";
 import type { FileItem } from "./types";
@@ -42,6 +58,7 @@ export function LibraryRoute() {
   const [trashPending, setTrashPending] = useState(false);
   const [analysisPending, setAnalysisPending] = useState(false);
   const [detailRefreshToken, setDetailRefreshToken] = useState(0);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +120,22 @@ export function LibraryRoute() {
       setLoadingMore(false);
     }
   }
+
+  useEffect(() => {
+    if (!hasMore || loading || loadingMore || !nextCursor || !loadMoreRef.current || !("IntersectionObserver" in window)) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void handleLoadMore();
+        }
+      },
+      { rootMargin: "600px 0px 600px 0px" }
+    );
+    observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore, nextCursor, filters]);
 
   const detailState = useAsync(
     () => {
@@ -177,6 +210,7 @@ export function LibraryRoute() {
     <div className="library-layout">
       <LibraryPage
         files={files}
+        selectedFile={files.find((file) => file.id === selectedFileId) ?? null}
         loading={loading}
         loadingMore={loadingMore}
         hasMore={hasMore}
@@ -185,149 +219,177 @@ export function LibraryRoute() {
         onSelectFile={setSelectedFileId}
         filters={filters}
         onFiltersChange={(patch) => setFilters((current) => ({ ...current, ...patch }))}
-        onLoadMore={handleLoadMore}
+        loadMoreRef={loadMoreRef}
         error={error}
       />
-      <aside className="detail-panel">
-        <h3>文件详情</h3>
-        {notice ? <p>{notice}</p> : null}
+      <aside className="detail-panel library-inspector">
+        <div className="library-panel-heading">
+          <div>
+            <span className="library-section-label">Inspector</span>
+            <h3>文件详情</h3>
+          </div>
+          <p>把关键信息拆成并列信息块，并把技术规格、状态、动作统一翻译成可读的产品语言。</p>
+        </div>
+        {notice ? <p className="detail-notice">{notice}</p> : null}
         {detailState.loading ? <p>正在加载详情…</p> : null}
         {detailState.error ? <p>{detailState.error}</p> : null}
         {detail ? (
           <div className="detail-stack">
-            <img
-              src={`/api/files/${detail.id}/preview`}
-              alt={`${detail.file_name}-detail`}
-              className="detail-preview"
-            />
-            <div className="detail-actions">
-              <button
-                type="button"
-                className="primary-button"
-                onClick={handleRecomputeAnalysis}
-                disabled={analysisPending}
-              >
-                {analysisPending ? "提交中…" : "重新 AI 分析"}
-              </button>
-              <button type="button" className="primary-button" onClick={handleOpenFile} disabled={openPending}>
-                {openPending ? "打开中…" : "默认程序打开"}
-              </button>
-              {detail.review_action === "trash_candidate" ? (
-                <button type="button" className="secondary-button" onClick={handleMoveToTrash} disabled={trashPending}>
-                  {trashPending ? "移动中…" : "移动到废纸篓"}
-                </button>
-              ) : null}
-            </div>
-            <strong>{detail.file_name}</strong>
-            <span className="detail-path">{detail.abs_path}</span>
-            <div className="detail-meta">
-              <span>{detail.media_type === "video" ? "视频" : "图片"}</span>
-              <span>{detail.quality_tier ?? "unknown"}</span>
-              <span>{detail.status}</span>
-            </div>
-            <div className="detail-grid">
-              <DetailStat label="分辨率" value={formatResolution(detail.width, detail.height)} />
-              <DetailStat label="时长" value={formatDuration(detail.duration_ms)} />
-              <DetailStat label="格式" value={detail.format || detail.container || "-"} />
-              <DetailStat label="体积" value={formatBytes(detail.size_bytes)} />
-              <DetailStat label="FPS" value={detail.fps ? `${detail.fps}` : "-"} />
-              <DetailStat
-                label="码率"
-                value={detail.bitrate ? `${Math.round(detail.bitrate / 1000)} kbps` : "-"}
-              />
-            </div>
-            <DetailSection title="标签">
-              <div className="media-tags">
-                {(detail.tags ?? []).map((tag) => (
-                  <span key={`${tag.namespace}:${tag.name}`} className="media-tag">
-                    {tag.display_name || tag.name}
-                  </span>
-                ))}
-              </div>
-            </DetailSection>
-            <DetailSection title="当前分析">
-              <ul className="detail-list">
-                {(detail.current_analyses ?? []).map((analysis) => (
-                  <li key={`${analysis.analysis_type}:${analysis.created_at}`}>
-                    <strong>{analysis.analysis_type}</strong>
-                    <span>{analysis.summary || "无摘要"}</span>
-                  </li>
-                ))}
-              </ul>
-            </DetailSection>
-            <DetailSection title="聚类">
-              <ul className="detail-list">
-                {(detail.clusters ?? []).map((cluster) => (
-                  <li key={`${cluster.cluster_type}:${cluster.id}`}>
-                    <strong>{cluster.title || cluster.cluster_type}</strong>
-                    <span>
-                      {cluster.cluster_type} / {cluster.status}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </DetailSection>
-            <DetailSection title="Embedding">
-              <ul className="detail-list">
-                {(detail.embeddings ?? []).map((embedding) => (
-                  <li key={`${embedding.embedding_type}:${embedding.model_name}`}>
-                    <strong>{embedding.embedding_type}</strong>
-                    <span>
-                      {embedding.provider || "unknown"} / {embedding.model_name || "unknown"} / {embedding.vector_count}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </DetailSection>
-            {detail.video_frames?.length ? (
-              <DetailSection title="关键帧">
-                <div className="frame-grid">
-                  {detail.video_frames.map((frame, index) => (
-                    <figure key={`${frame.timestamp_ms}:${index}`} className="frame-card">
-                      <img
-                        src={`/api/files/${detail.id}/frames/${index}/preview`}
-                        alt={`frame-${index}`}
-                        className="frame-preview"
-                      />
-                      <figcaption>
-                        <strong>{frame.frame_role}</strong>
-                        <span>{formatDuration(frame.timestamp_ms)}</span>
-                      </figcaption>
-                    </figure>
-                  ))}
+            <div className="detail-overview-grid">
+              <section className="detail-overview-card detail-overview-card-primary">
+                <div className="detail-preview-shell" data-orientation={getOrientation(detail)}>
+                  <img
+                    src={`/api/files/${detail.id}/preview`}
+                    alt={`${detail.file_name}-detail`}
+                    className="detail-preview"
+                  />
+                </div>
+                <div className="detail-actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={handleRecomputeAnalysis}
+                    disabled={analysisPending}
+                  >
+                    {analysisPending ? "提交中…" : "重新 AI 分析"}
+                  </button>
+                  <button type="button" className="primary-button" onClick={handleOpenFile} disabled={openPending}>
+                    {openPending ? "打开中…" : "默认程序打开"}
+                  </button>
+                  {detail.review_action === "trash_candidate" ? (
+                    <button type="button" className="secondary-button" onClick={handleMoveToTrash} disabled={trashPending}>
+                      {trashPending ? "移动中…" : "移动到废纸篓"}
+                    </button>
+                  ) : null}
+                </div>
+                <div className="detail-title-row">
+                  <strong>{detail.file_name}</strong>
+                  <span className="media-card-id">#{detail.id}</span>
+                </div>
+                <span className="detail-path">{detail.abs_path}</span>
+                <div className="detail-meta">
+                  <span>{formatMediaType(detail.media_type)}</span>
+                  <span>{formatQualityTier(detail.quality_tier)}</span>
+                  <span>{formatFileStatus(detail.status)}</span>
+                  {detail.review_action ? <span>{formatReviewAction(detail.review_action)}</span> : null}
+                </div>
+                <p className="detail-note">{QUALITY_TIER_NOTE}</p>
+              </section>
+
+              <DetailSection title="基础指标" className="detail-overview-card">
+                <div className="detail-grid detail-grid-compact">
+                  <DetailStat label="规格等级" value={formatQualityTier(detail.quality_tier)} />
+                  <DetailStat label="技术评分" value={formatQualityScore(detail.quality_score)} />
+                  <DetailStat label="文件状态" value={formatFileStatus(detail.status)} />
+                  <DetailStat label="分辨率" value={formatResolution(detail.width, detail.height)} />
+                  <DetailStat label="时长" value={formatDuration(detail.duration_ms)} />
+                  <DetailStat label="格式" value={formatUnknown(detail.format || detail.container)} />
+                  <DetailStat label="体积" value={formatBytes(detail.size_bytes)} />
+                  <DetailStat label="FPS" value={detail.fps ? `${detail.fps}` : "-"} />
+                  <DetailStat
+                    label="码率"
+                    value={detail.bitrate ? `${Math.round(detail.bitrate / 1000)} kbps` : "-"}
+                  />
                 </div>
               </DetailSection>
-            ) : null}
-            <DetailSection title="最近操作">
-              <ul className="detail-list">
-                {(detail.review_actions ?? []).map((action, index) => (
-                  <li key={`${action.action_type}:${action.created_at}:${index}`}>
-                    <strong>{action.action_type}</strong>
-                    <span>{action.note || "无备注"}</span>
-                  </li>
-                ))}
-              </ul>
-            </DetailSection>
-            <DetailSection title="路径历史">
-              <ul className="detail-list">
-                {(detail.path_history ?? []).map((entry) => (
-                  <li key={`${entry.abs_path}:${entry.seen_at}`}>
-                    <strong>{entry.event_type}</strong>
-                    <span>{entry.abs_path}</span>
-                  </li>
-                ))}
-              </ul>
-            </DetailSection>
+
+              <DetailSection title="标签与聚类" className="detail-overview-card">
+                <div className="detail-inline-stack">
+                  <div className="media-tags">
+                    {(detail.tags ?? []).slice(0, 8).map((tag) => (
+                      <span key={`${tag.namespace}:${tag.name}`} className="media-tag">
+                        {tag.display_name || tag.name}
+                      </span>
+                    ))}
+                  </div>
+                  <ul className="detail-list detail-list-compact">
+                    {(detail.clusters ?? []).slice(0, 4).map((cluster) => (
+                      <li key={`${cluster.cluster_type}:${cluster.id}`}>
+                        <strong>{formatClusterLabel(cluster)}</strong>
+                        <span>{formatClusterMeta(cluster)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </DetailSection>
+
+              <DetailSection title="分析与向量" className="detail-overview-card">
+                <div className="detail-two-column-list">
+                  <ul className="detail-list detail-list-compact">
+                    {(detail.current_analyses ?? []).slice(0, 4).map((analysis) => (
+                      <li key={`${analysis.analysis_type}:${analysis.created_at}`}>
+                        <strong>{formatAnalysisType(analysis.analysis_type)}</strong>
+                        <span>{formatAnalysisSummary(analysis)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <ul className="detail-list detail-list-compact">
+                    {(detail.embeddings ?? []).slice(0, 4).map((embedding) => (
+                      <li key={`${embedding.embedding_type}:${embedding.model_name}`}>
+                        <strong>{embedding.embedding_type || "未识别向量"}</strong>
+                        <span>
+                          {formatUnknown(embedding.provider)} / {formatUnknown(embedding.model_name)} /{" "}
+                          {embedding.vector_count}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </DetailSection>
+
+              {detail.video_frames?.length ? (
+                <DetailSection title="关键帧" className="detail-overview-card detail-overview-card-wide">
+                  <div className="frame-grid frame-grid-compact">
+                    {detail.video_frames.slice(0, 4).map((frame, index) => (
+                      <figure key={`${frame.timestamp_ms}:${index}`} className="frame-card">
+                        <img
+                          src={`/api/files/${detail.id}/frames/${index}/preview`}
+                          alt={`frame-${index}`}
+                          className="frame-preview"
+                        />
+                        <figcaption>
+                          <strong>{frame.frame_role}</strong>
+                          <span>{formatDuration(frame.timestamp_ms)}</span>
+                        </figcaption>
+                      </figure>
+                    ))}
+                  </div>
+                </DetailSection>
+              ) : null}
+
+              <DetailSection title="最近操作与路径历史" className="detail-overview-card detail-overview-card-wide">
+                <div className="detail-two-column-list">
+                  <ul className="detail-list detail-list-compact">
+                    {(detail.review_actions ?? []).slice(0, 4).map((action, index) => (
+                      <li key={`${action.action_type}:${action.created_at}:${index}`}>
+                        <strong>{formatReviewAction(action.action_type)}</strong>
+                        <span>{formatReviewActionSummary(action)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <ul className="detail-list detail-list-compact">
+                    {(detail.path_history ?? []).slice(0, 4).map((entry) => (
+                      <li key={`${entry.abs_path}:${entry.seen_at}`}>
+                        <strong>{formatPathEvent(entry.event_type)}</strong>
+                        <span>{formatPathHistorySummary(entry)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </DetailSection>
+            </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="detail-notice">从左侧媒体墙选择一个文件后，这里会展示完整的检查信息。</div>
+        )}
       </aside>
     </div>
   );
 }
 
-function DetailSection(props: { title: string; children: ReactNode }) {
+function DetailSection(props: { title: string; children: ReactNode; className?: string }) {
   return (
-    <div className="detail-section">
+    <div className={props.className ? `detail-section ${props.className}` : "detail-section"}>
       <h4>{props.title}</h4>
       {props.children}
     </div>
@@ -376,4 +438,17 @@ function formatBytes(size: number) {
     unitIndex += 1;
   }
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function getOrientation(file: Pick<FileItem, "width" | "height">) {
+  if (!file.width || !file.height) {
+    return "unknown";
+  }
+  if (file.height > file.width) {
+    return "portrait";
+  }
+  if (file.width > file.height) {
+    return "landscape";
+  }
+  return "square";
 }
