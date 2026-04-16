@@ -32,6 +32,15 @@ type DirectoryPicker interface {
 	PickDirectory(ctx context.Context) (string, error)
 }
 
+type AIPromptSettingsDTO struct {
+	UnderstandingExtraPrompt string `json:"understanding_extra_prompt"`
+}
+
+type AIPromptSettingsProvider interface {
+	GetSettings(ctx context.Context) (AIPromptSettingsDTO, error)
+	UpdateSettings(ctx context.Context, input AIPromptSettingsDTO) (AIPromptSettingsDTO, error)
+}
+
 type JobListProvider interface {
 	ListJobs(ctx context.Context, options tasks.JobListOptions) ([]tasks.Job, error)
 }
@@ -72,6 +81,10 @@ type VolumeScanner interface {
 	EnqueueVolumeScan(ctx context.Context, volumeID int64) (tasks.Job, error)
 }
 
+type VolumeDeleter interface {
+	DeleteVolume(ctx context.Context, volumeID int64) error
+}
+
 type TagDTO struct {
 	Namespace   string `json:"namespace"`
 	Name        string `json:"name"`
@@ -89,19 +102,19 @@ type TagListProvider interface {
 }
 
 type ClusterDTO struct {
-	ID          int64    `json:"id"`
-	ClusterType string   `json:"cluster_type"`
-	Title       string   `json:"title"`
-	Confidence  *float64 `json:"confidence,omitempty"`
-	Status      string   `json:"status"`
-	CoverFileID *int64   `json:"cover_file_id,omitempty"`
-	MemberCount int64    `json:"member_count"`
-	StrongMemberCount int64 `json:"strong_member_count,omitempty"`
-	TopMemberScore *float64 `json:"top_member_score,omitempty"`
-	PersonVisualCount int64 `json:"person_visual_count,omitempty"`
-	GenericVisualCount int64 `json:"generic_visual_count,omitempty"`
-	TopEvidenceType string `json:"top_evidence_type,omitempty"`
-	CreatedAt   string   `json:"created_at"`
+	ID                 int64    `json:"id"`
+	ClusterType        string   `json:"cluster_type"`
+	Title              string   `json:"title"`
+	Confidence         *float64 `json:"confidence,omitempty"`
+	Status             string   `json:"status"`
+	CoverFileID        *int64   `json:"cover_file_id,omitempty"`
+	MemberCount        int64    `json:"member_count"`
+	StrongMemberCount  int64    `json:"strong_member_count,omitempty"`
+	TopMemberScore     *float64 `json:"top_member_score,omitempty"`
+	PersonVisualCount  int64    `json:"person_visual_count,omitempty"`
+	GenericVisualCount int64    `json:"generic_visual_count,omitempty"`
+	TopEvidenceType    string   `json:"top_evidence_type,omitempty"`
+	CreatedAt          string   `json:"created_at"`
 }
 
 type ClusterMemberDTO struct {
@@ -254,6 +267,7 @@ type FileListRequest struct {
 	ReviewAction  string `json:"review_action,omitempty"`
 	Status        string `json:"status,omitempty"`
 	VolumeID      int64  `json:"volume_id,omitempty"`
+	HasTags       string `json:"has_tags,omitempty"`
 	TagNamespace  string `json:"tag_namespace,omitempty"`
 	Tag           string `json:"tag,omitempty"`
 	ClusterType   string `json:"cluster_type,omitempty"`
@@ -316,6 +330,14 @@ type FileTagDeleteRequest struct {
 	Name      string `json:"name"`
 }
 
+type FileTagReplaceRequest struct {
+	CurrentNamespace string `json:"current_namespace"`
+	CurrentName      string `json:"current_name"`
+	Namespace        string `json:"namespace"`
+	Name             string `json:"name"`
+	DisplayName      string `json:"display_name,omitempty"`
+}
+
 type FileReviewer interface {
 	ApplyFileReviewAction(ctx context.Context, fileID int64, input FileReviewActionRequest) error
 }
@@ -323,6 +345,7 @@ type FileReviewer interface {
 type FileTagCreator interface {
 	CreateFileTag(ctx context.Context, fileID int64, input FileTagCreateRequest) error
 	DeleteFileTag(ctx context.Context, fileID int64, input FileTagDeleteRequest) error
+	ReplaceFileTag(ctx context.Context, fileID int64, input FileTagReplaceRequest) error
 }
 
 type FileRecomputeRequest struct {
@@ -331,35 +354,38 @@ type FileRecomputeRequest struct {
 
 type FileJobRunner interface {
 	RecomputeFileEmbeddings(ctx context.Context, fileID int64, input FileRecomputeRequest) error
+	GenerateFilePreview(ctx context.Context, fileID int64, input FileRecomputeRequest) error
 	ReclusterFile(ctx context.Context, fileID int64, input FileRecomputeRequest) error
 }
 
 type Dependencies struct {
-	FrontendDistDir        string
-	SystemStatusProvider   SystemStatusProvider
-	DirectoryPicker        DirectoryPicker
-	TaskSummaryProvider    TaskSummaryProvider
-	JobListProvider        JobListProvider
-	JobCreator             JobCreator
-	JobRetrier             JobRetrier
-	JobEventListProvider   JobEventListProvider
-	VolumeListProvider     VolumeListProvider
-	VolumeCreator          VolumeCreator
-	VolumeScanner          VolumeScanner
-	TagListProvider        TagListProvider
-	ClusterListProvider    ClusterListProvider
-	ClusterDetailProvider  ClusterDetailProvider
-	ClusterSummaryProvider ClusterSummaryProvider
-	ClusterReviewer        ClusterReviewer
-	FileListProvider       FileListProvider
-	FileDetailProvider     FileDetailProvider
-	FileContentProvider    FileContentProvider
-	FileTrasher            FileTrasher
-	FileRevealer           FileRevealer
-	FileOpener             FileOpener
-	FileReviewer           FileReviewer
-	FileTagCreator         FileTagCreator
-	FileJobRunner          FileJobRunner
+	FrontendDistDir          string
+	SystemStatusProvider     SystemStatusProvider
+	DirectoryPicker          DirectoryPicker
+	AIPromptSettingsProvider AIPromptSettingsProvider
+	TaskSummaryProvider      TaskSummaryProvider
+	JobListProvider          JobListProvider
+	JobCreator               JobCreator
+	JobRetrier               JobRetrier
+	JobEventListProvider     JobEventListProvider
+	VolumeListProvider       VolumeListProvider
+	VolumeCreator            VolumeCreator
+	VolumeScanner            VolumeScanner
+	VolumeDeleter            VolumeDeleter
+	TagListProvider          TagListProvider
+	ClusterListProvider      ClusterListProvider
+	ClusterDetailProvider    ClusterDetailProvider
+	ClusterSummaryProvider   ClusterSummaryProvider
+	ClusterReviewer          ClusterReviewer
+	FileListProvider         FileListProvider
+	FileDetailProvider       FileDetailProvider
+	FileContentProvider      FileContentProvider
+	FileTrasher              FileTrasher
+	FileRevealer             FileRevealer
+	FileOpener               FileOpener
+	FileReviewer             FileReviewer
+	FileTagCreator           FileTagCreator
+	FileJobRunner            FileJobRunner
 }
 
 func NewMux(deps Dependencies) http.Handler {
@@ -371,11 +397,12 @@ func NewMux(deps Dependencies) http.Handler {
 	mux.HandleFunc("/readyz", readyHandler(deps.SystemStatusProvider))
 	mux.HandleFunc("/api/system-status", systemStatusHandler(deps.SystemStatusProvider))
 	mux.HandleFunc("/api/system/pick-directory", directoryPickerHandler(deps.DirectoryPicker))
+	mux.HandleFunc("/api/system/ai-prompt-settings", aiPromptSettingsHandler(deps.AIPromptSettingsProvider))
 	mux.HandleFunc("/api/task-summary", taskSummaryHandler(deps.TaskSummaryProvider))
 	mux.HandleFunc("/api/jobs", jobsHandler(deps.JobListProvider, deps.JobCreator))
 	mux.HandleFunc("/api/jobs/", jobActionHandler(deps.JobRetrier, deps.JobEventListProvider))
 	mux.HandleFunc("/api/volumes", volumesHandler(deps.VolumeListProvider, deps.VolumeCreator))
-	mux.HandleFunc("/api/volumes/", volumeActionHandler(deps.VolumeScanner))
+	mux.HandleFunc("/api/volumes/", volumeActionHandler(deps.VolumeScanner, deps.VolumeDeleter))
 	mux.HandleFunc("/api/tags", tagsHandler(deps.TagListProvider))
 	mux.HandleFunc("/api/cluster-summary", clusterSummaryHandler(deps.ClusterSummaryProvider))
 	mux.HandleFunc("/api/clusters", clustersHandler(deps.ClusterListProvider))
@@ -465,6 +492,46 @@ func directoryPickerHandler(picker DirectoryPicker) http.HandlerFunc {
 		}
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"path": path})
+	}
+}
+
+func aiPromptSettingsHandler(provider AIPromptSettingsProvider) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if provider == nil {
+			http.Error(w, "ai prompt settings unavailable", http.StatusNotImplemented)
+			return
+		}
+
+		switch r.Method {
+		case http.MethodGet:
+			item, err := provider.GetSettings(r.Context())
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(item)
+		case http.MethodPost:
+			var input AIPromptSettingsDTO
+			if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid json payload"})
+				return
+			}
+			item, err := provider.UpdateSettings(r.Context(), input)
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode(item)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
 	}
 }
 
@@ -675,35 +742,57 @@ func volumesHandler(provider VolumeListProvider, creator VolumeCreator) http.Han
 	}
 }
 
-func volumeActionHandler(scanner VolumeScanner) http.HandlerFunc {
+func volumeActionHandler(scanner VolumeScanner, deleter VolumeDeleter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasSuffix(r.URL.Path, "/scan") {
-			http.NotFound(w, r)
+		if strings.HasSuffix(r.URL.Path, "/scan") {
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", "POST")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if scanner == nil {
+				http.Error(w, "volume scan unavailable", http.StatusNotImplemented)
+				return
+			}
+			volumeID, ok := parseVolumeScanPath(r.URL.Path)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			item, err := scanner.EnqueueVolumeScan(r.Context(), volumeID)
+			w.Header().Set("Content-Type", "application/json")
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(item)
 			return
 		}
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", "POST")
+
+		if r.Method != http.MethodDelete {
+			w.Header().Set("Allow", "DELETE, POST")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		if scanner == nil {
-			http.Error(w, "volume scan unavailable", http.StatusNotImplemented)
+		if deleter == nil {
+			http.Error(w, "volume delete unavailable", http.StatusNotImplemented)
 			return
 		}
-		volumeID, ok := parseVolumeScanPath(r.URL.Path)
+		volumeID, ok := parseVolumeDetailPath(r.URL.Path)
 		if !ok {
 			http.NotFound(w, r)
 			return
 		}
-		item, err := scanner.EnqueueVolumeScan(r.Context(), volumeID)
-		w.Header().Set("Content-Type", "application/json")
+		err := deleter.DeleteVolume(r.Context(), volumeID)
 		if err != nil {
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusInternalServerError)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 			return
 		}
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(item)
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
@@ -901,6 +990,7 @@ func filesHandler(provider FileListProvider) http.HandlerFunc {
 				ReviewAction:  strings.TrimSpace(r.URL.Query().Get("review_action")),
 				Status:        strings.TrimSpace(r.URL.Query().Get("status")),
 				VolumeID:      parseInt64(r.URL.Query().Get("volume_id")),
+				HasTags:       strings.TrimSpace(r.URL.Query().Get("has_tags")),
 				TagNamespace:  strings.TrimSpace(r.URL.Query().Get("tag_namespace")),
 				Tag:           strings.TrimSpace(r.URL.Query().Get("tag")),
 				ClusterType:   strings.TrimSpace(r.URL.Query().Get("cluster_type")),
@@ -1022,8 +1112,8 @@ func fileActionHandler(detailProvider FileDetailProvider, contentProvider FileCo
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/tags") {
-			if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-				w.Header().Set("Allow", "POST, DELETE")
+			if r.Method != http.MethodPost && r.Method != http.MethodDelete && r.Method != http.MethodPut {
+				w.Header().Set("Allow", "POST, PUT, DELETE")
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
@@ -1057,6 +1147,29 @@ func fileActionHandler(detailProvider FileDetailProvider, contentProvider FileCo
 					return
 				}
 				w.WriteHeader(http.StatusCreated)
+				return
+			}
+			if r.Method == http.MethodPut {
+				var input FileTagReplaceRequest
+				if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid json payload"})
+					return
+				}
+				if strings.TrimSpace(input.CurrentNamespace) == "" || strings.TrimSpace(input.CurrentName) == "" || strings.TrimSpace(input.Namespace) == "" || strings.TrimSpace(input.Name) == "" {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusBadRequest)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": "current_namespace, current_name, namespace and name are required"})
+					return
+				}
+				if err := fileTagCreator.ReplaceFileTag(r.Context(), fileID, input); err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+					return
+				}
+				w.WriteHeader(http.StatusOK)
 				return
 			}
 			input := FileTagDeleteRequest{
@@ -1208,6 +1321,43 @@ func fileActionHandler(detailProvider FileDetailProvider, contentProvider FileCo
 				return
 			}
 			if err := fileJobRunner.RecomputeFileEmbeddings(r.Context(), fileID, FileRecomputeRequest{
+				MediaType: item.MediaType,
+			}); err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/generate-preview") {
+			if r.Method != http.MethodPost {
+				w.Header().Set("Allow", "POST")
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			if fileJobRunner == nil {
+				http.Error(w, "file preview generation unavailable", http.StatusNotImplemented)
+				return
+			}
+			fileID, ok := parseFileGeneratePreviewPath(r.URL.Path)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if detailProvider == nil {
+				http.Error(w, "file detail unavailable", http.StatusNotImplemented)
+				return
+			}
+			item, err := detailProvider.GetFileDetail(r.Context(), fileID)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+				return
+			}
+			if err := fileJobRunner.GenerateFilePreview(r.Context(), fileID, FileRecomputeRequest{
 				MediaType: item.MediaType,
 			}); err != nil {
 				w.Header().Set("Content-Type", "application/json")
@@ -1506,6 +1656,22 @@ func parseFileRecomputeEmbeddingsPath(path string) (int64, bool) {
 	return value, true
 }
 
+func parseFileGeneratePreviewPath(path string) (int64, bool) {
+	if !strings.HasPrefix(path, "/api/files/") || !strings.HasSuffix(path, "/generate-preview") {
+		return 0, false
+	}
+	idPart := strings.TrimSuffix(strings.TrimPrefix(path, "/api/files/"), "/generate-preview")
+	idPart = strings.TrimSuffix(idPart, "/")
+	if idPart == "" || strings.Contains(idPart, "/") {
+		return 0, false
+	}
+	value, err := strconv.ParseInt(idPart, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
+}
+
 func parseFileReclusterPath(path string) (int64, bool) {
 	if !strings.HasPrefix(path, "/api/files/") || !strings.HasSuffix(path, "/recluster") {
 		return 0, false
@@ -1574,6 +1740,22 @@ func parseVolumeScanPath(path string) (int64, bool) {
 		return 0, false
 	}
 	idPart := strings.TrimSuffix(strings.TrimPrefix(path, "/api/volumes/"), "/scan")
+	value, err := strconv.ParseInt(idPart, 10, 64)
+	if err != nil || value <= 0 {
+		return 0, false
+	}
+	return value, true
+}
+
+func parseVolumeDetailPath(path string) (int64, bool) {
+	if !strings.HasPrefix(path, "/api/volumes/") {
+		return 0, false
+	}
+	idPart := strings.TrimPrefix(path, "/api/volumes/")
+	idPart = strings.TrimSuffix(idPart, "/")
+	if idPart == "" || strings.Contains(idPart, "/") {
+		return 0, false
+	}
 	value, err := strconv.ParseInt(idPart, 10, 64)
 	if err != nil || value <= 0 {
 		return 0, false

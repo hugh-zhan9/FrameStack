@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  createFileTag,
+  deleteFileTag,
   fetchFileDetail,
   fetchFiles,
+  generateFilePreview,
   moveFileToTrash,
   openFileWithDefaultApp,
+  replaceFileTag,
   recomputeFileEmbeddings
 } from "../../lib/api";
 import {
@@ -19,11 +23,11 @@ import {
   formatQualityTier,
   formatReviewAction,
   formatReviewActionSummary,
-  formatUnknown,
-  QUALITY_TIER_NOTE
+  formatUnknown
 } from "./presentation";
 import { useAsync } from "../../lib/useAsync";
 import { LibraryPage } from "./LibraryPage";
+import type { FileDetail, FileTag } from "../../lib/contracts";
 import type { FileItem } from "./types";
 
 type LibraryFilters = {
@@ -32,6 +36,8 @@ type LibraryFilters = {
   qualityTier: string;
   status: string;
   reviewAction: string;
+  hasTags: string;
+  tag: string;
   sort: string;
 };
 
@@ -41,6 +47,8 @@ const defaultFilters: LibraryFilters = {
   qualityTier: "",
   status: "",
   reviewAction: "",
+  hasTags: "",
+  tag: "",
   sort: "updated_desc"
 };
 
@@ -57,7 +65,20 @@ export function LibraryRoute() {
   const [openPending, setOpenPending] = useState(false);
   const [trashPending, setTrashPending] = useState(false);
   const [analysisPending, setAnalysisPending] = useState(false);
+  const [previewPending, setPreviewPending] = useState(false);
   const [detailRefreshToken, setDetailRefreshToken] = useState(0);
+  const [tagPending, setTagPending] = useState(false);
+  const [tagDraft, setTagDraft] = useState({
+    namespace: "content",
+    name: ""
+  });
+  const [editingTagKey, setEditingTagKey] = useState<string | null>(null);
+  const [tagEditDraft, setTagEditDraft] = useState({
+    currentNamespace: "",
+    currentName: "",
+    namespace: "content",
+    name: ""
+  });
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -146,7 +167,28 @@ export function LibraryRoute() {
     },
     [selectedFileId, detailRefreshToken]
   );
-  const detail = detailState.data;
+  const [detail, setDetail] = useState<FileDetail | null>(null);
+
+  useEffect(() => {
+    setDetail(null);
+  }, [selectedFileId]);
+
+  useEffect(() => {
+    if (detailState.data) {
+      setDetail(detailState.data);
+    }
+  }, [detailState.data]);
+
+  useEffect(() => {
+    setTagDraft((current) => ({ ...current, name: "" }));
+    setEditingTagKey(null);
+    setTagEditDraft({
+      currentNamespace: "",
+      currentName: "",
+      namespace: "content",
+      name: ""
+    });
+  }, [selectedFileId]);
 
   async function handleOpenFile() {
     if (!detail || openPending) {
@@ -206,6 +248,137 @@ export function LibraryRoute() {
     }
   }
 
+  async function handleGeneratePreview() {
+    if (!detail || previewPending || detail.media_type !== "video") {
+      return;
+    }
+    setPreviewPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await generateFilePreview(detail.id);
+      setNotice("已提交视频预览图生成任务，完成后会自动显示。");
+      setDetailRefreshToken((current) => current + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "提交预览图生成任务失败");
+    } finally {
+      setPreviewPending(false);
+    }
+  }
+
+  async function handleCreateTag() {
+    if (!detail || tagPending) {
+      return;
+    }
+    const namespace = tagDraft.namespace.trim();
+    const name = tagDraft.name.trim();
+    if (!namespace || !name) {
+      setError("请填写标签命名空间和标签名");
+      return;
+    }
+    setTagPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await createFileTag({
+        fileId: detail.id,
+        namespace,
+        name
+      });
+      setNotice("标签已添加。");
+      setTagDraft((current) => ({ ...current, name: "" }));
+      const nextTag = buildLocalTag(namespace, name);
+      setDetail((current) => (current ? applyTagsToDetail(current, upsertLocalTag(current.tags ?? [], nextTag)) : current));
+      setFiles((current) => updateFileListTags(current, detail.id, upsertLocalTag(detail.tags ?? [], nextTag)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "添加标签失败");
+    } finally {
+      setTagPending(false);
+    }
+  }
+
+  async function handleDeleteTag(namespace: string, name: string) {
+    if (!detail || tagPending) {
+      return;
+    }
+    setTagPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await deleteFileTag({
+        fileId: detail.id,
+        namespace,
+        name
+      });
+      setNotice("标签已删除。");
+      const nextTags = removeLocalTag(detail.tags ?? [], namespace, name);
+      setDetail((current) => (current ? applyTagsToDetail(current, nextTags) : current));
+      setFiles((current) => updateFileListTags(current, detail.id, nextTags));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除标签失败");
+    } finally {
+      setTagPending(false);
+    }
+  }
+
+  function handleStartEditTag(tag: FileTag) {
+    setEditingTagKey(`${tag.namespace}:${tag.name}`);
+    setTagEditDraft({
+      currentNamespace: tag.namespace,
+      currentName: tag.name,
+      namespace: tag.namespace,
+      name: tag.name
+    });
+    setError(null);
+    setNotice(null);
+  }
+
+  function handleCancelEditTag() {
+    setEditingTagKey(null);
+    setTagEditDraft({
+      currentNamespace: "",
+      currentName: "",
+      namespace: "content",
+      name: ""
+    });
+  }
+
+  async function handleReplaceTag() {
+    if (!detail || tagPending || !editingTagKey) {
+      return;
+    }
+    const currentNamespace = tagEditDraft.currentNamespace.trim();
+    const currentName = tagEditDraft.currentName.trim();
+    const namespace = tagEditDraft.namespace.trim();
+    const name = tagEditDraft.name.trim();
+    if (!currentNamespace || !currentName || !namespace || !name) {
+      setError("请填写完整的原标签和新标签信息");
+      return;
+    }
+    setTagPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await replaceFileTag({
+        fileId: detail.id,
+        current_namespace: currentNamespace,
+        current_name: currentName,
+        namespace,
+        name
+      });
+      setNotice("标签已更新。");
+      const nextTag = buildLocalTag(namespace, name);
+      const nextTags = upsertLocalTag(removeLocalTag(detail.tags ?? [], currentNamespace, currentName), nextTag);
+      setDetail((current) => (current ? applyTagsToDetail(current, nextTags) : current));
+      setFiles((current) => updateFileListTags(current, detail.id, nextTags));
+      handleCancelEditTag();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "更新标签失败");
+    } finally {
+      setTagPending(false);
+    }
+  }
+
   return (
     <div className="library-layout">
       <LibraryPage
@@ -228,7 +401,6 @@ export function LibraryRoute() {
             <span className="library-section-label">Inspector</span>
             <h3>文件详情</h3>
           </div>
-          <p>把关键信息拆成并列信息块，并把技术规格、状态、动作统一翻译成可读的产品语言。</p>
         </div>
         {notice ? <p className="detail-notice">{notice}</p> : null}
         {detailState.loading ? <p>正在加载详情…</p> : null}
@@ -245,6 +417,16 @@ export function LibraryRoute() {
                   />
                 </div>
                 <div className="detail-actions">
+                  {detail.media_type === "video" ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={handleGeneratePreview}
+                      disabled={previewPending}
+                    >
+                      {previewPending ? "提交中…" : "生成预览图"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="primary-button"
@@ -273,7 +455,6 @@ export function LibraryRoute() {
                   <span>{formatFileStatus(detail.status)}</span>
                   {detail.review_action ? <span>{formatReviewAction(detail.review_action)}</span> : null}
                 </div>
-                <p className="detail-note">{QUALITY_TIER_NOTE}</p>
               </section>
 
               <DetailSection title="基础指标" className="detail-overview-card">
@@ -281,7 +462,7 @@ export function LibraryRoute() {
                   <DetailStat label="规格等级" value={formatQualityTier(detail.quality_tier)} />
                   <DetailStat label="技术评分" value={formatQualityScore(detail.quality_score)} />
                   <DetailStat label="文件状态" value={formatFileStatus(detail.status)} />
-                  <DetailStat label="分辨率" value={formatResolution(detail.width, detail.height)} />
+                  <DetailStat label="分辨率" value={formatResolution(detail.width, detail.height, detail.media_type)} />
                   <DetailStat label="时长" value={formatDuration(detail.duration_ms)} />
                   <DetailStat label="格式" value={formatUnknown(detail.format || detail.container)} />
                   <DetailStat label="体积" value={formatBytes(detail.size_bytes)} />
@@ -295,12 +476,99 @@ export function LibraryRoute() {
 
               <DetailSection title="标签与聚类" className="detail-overview-card">
                 <div className="detail-inline-stack">
-                  <div className="media-tags">
-                    {(detail.tags ?? []).slice(0, 8).map((tag) => (
-                      <span key={`${tag.namespace}:${tag.name}`} className="media-tag">
-                        {tag.display_name || tag.name}
-                      </span>
-                    ))}
+                  <div className="detail-tag-form">
+                    <div className="detail-tag-form-fields">
+                      <select
+                        value={tagDraft.namespace}
+                        onChange={(event) => setTagDraft((current) => ({ ...current, namespace: event.target.value }))}
+                        aria-label="新增标签命名空间"
+                      >
+                        <option value="content">内容标签</option>
+                        <option value="quality">质量标签</option>
+                        <option value="sensitive">敏感标签</option>
+                        <option value="person">人物标签</option>
+                        <option value="management">管理标签</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={tagDraft.name}
+                        onChange={(event) => setTagDraft((current) => ({ ...current, name: event.target.value }))}
+                        placeholder="标签名"
+                        aria-label="新增标签名"
+                      />
+                    </div>
+                    <div className="detail-tag-form-actions">
+                      <button type="button" className="secondary-button" onClick={handleCreateTag} disabled={tagPending}>
+                        {tagPending ? "提交中…" : "添加标签"}
+                      </button>
+                    </div>
+                  </div>
+                  {editingTagKey ? (
+                    <div className="detail-tag-editor-card">
+                      <div className="detail-tag-editor-header">
+                        <strong>编辑标签</strong>
+                        <span>{tagEditDraft.currentNamespace}:{tagEditDraft.currentName}</span>
+                      </div>
+                      <div className="detail-tag-editor-form">
+                        <div className="detail-tag-editor-fields">
+                          <select
+                            value={tagEditDraft.namespace}
+                            onChange={(event) => setTagEditDraft((current) => ({ ...current, namespace: event.target.value }))}
+                            aria-label="编辑标签命名空间"
+                          >
+                            <option value="content">内容标签</option>
+                            <option value="quality">质量标签</option>
+                            <option value="sensitive">敏感标签</option>
+                            <option value="person">人物标签</option>
+                            <option value="management">管理标签</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={tagEditDraft.name}
+                            onChange={(event) => setTagEditDraft((current) => ({ ...current, name: event.target.value }))}
+                            placeholder="新的标签名"
+                            aria-label="编辑标签名"
+                          />
+                        </div>
+                        <div className="detail-tag-editor-actions">
+                          <button type="button" className="secondary-button" onClick={handleReplaceTag} disabled={tagPending}>
+                            {tagPending ? "保存中…" : "保存"}
+                          </button>
+                          <button type="button" className="secondary-button" onClick={handleCancelEditTag} disabled={tagPending}>
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="media-tags detail-tag-list">
+                    {(detail.tags ?? []).length ? (
+                      (detail.tags ?? []).slice(0, 12).map((tag) => (
+                        <span key={`${tag.namespace}:${tag.name}:${tag.source}`} className="media-tag media-tag-editable">
+                          <span>{tag.name}</span>
+                          <button
+                            type="button"
+                            className="media-tag-action"
+                            onClick={() => handleStartEditTag(tag)}
+                            disabled={tagPending}
+                            aria-label={`编辑标签 ${tag.name}`}
+                          >
+                            编辑
+                          </button>
+                          <button
+                            type="button"
+                            className="media-tag-remove"
+                            onClick={() => void handleDeleteTag(tag.namespace, tag.name)}
+                            disabled={tagPending}
+                            aria-label={`删除标签 ${tag.name}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))
+                    ) : (
+                      <span className="detail-note">当前还没有标签。</span>
+                    )}
                   </div>
                   <ul className="detail-list detail-list-compact">
                     {(detail.clusters ?? []).slice(0, 4).map((cluster) => (
@@ -342,11 +610,13 @@ export function LibraryRoute() {
                   <div className="frame-grid frame-grid-compact">
                     {detail.video_frames.slice(0, 4).map((frame, index) => (
                       <figure key={`${frame.timestamp_ms}:${index}`} className="frame-card">
-                        <img
-                          src={`/api/files/${detail.id}/frames/${index}/preview`}
-                          alt={`frame-${index}`}
-                          className="frame-preview"
-                        />
+                      <img
+                        src={`/api/files/${detail.id}/frames/${index}/preview`}
+                        alt={`frame-${index}`}
+                        loading="lazy"
+                        decoding="async"
+                        className="frame-preview"
+                      />
                         <figcaption>
                           <strong>{frame.frame_role}</strong>
                           <span>{formatDuration(frame.timestamp_ms)}</span>
@@ -387,6 +657,41 @@ export function LibraryRoute() {
   );
 }
 
+function buildLocalTag(namespace: string, name: string): FileTag {
+  return {
+    namespace,
+    name,
+    display_name: name,
+    source: "human",
+    confidence: 1
+  };
+}
+
+function upsertLocalTag(tags: FileTag[], nextTag: FileTag): FileTag[] {
+  return [nextTag, ...tags.filter((tag) => !(tag.namespace === nextTag.namespace && tag.name === nextTag.name))];
+}
+
+function removeLocalTag(tags: FileTag[], namespace: string, name: string): FileTag[] {
+  return tags.filter((tag) => !(tag.namespace === namespace && tag.name === name));
+}
+
+function applyTagsToDetail(detail: FileDetail, tags: FileTag[]): FileDetail {
+  return {
+    ...detail,
+    tags,
+    tag_names: extractTagNames(tags)
+  };
+}
+
+function updateFileListTags(files: FileItem[], fileId: number, tags: FileTag[]): FileItem[] {
+  const tagNames = extractTagNames(tags);
+  return files.map((file) => (file.id === fileId ? { ...file, tag_names: tagNames } : file));
+}
+
+function extractTagNames(tags: FileTag[]): string[] {
+  return Array.from(new Set(tags.map((tag) => tag.name)));
+}
+
 function DetailSection(props: { title: string; children: ReactNode; className?: string }) {
   return (
     <div className={props.className ? `detail-section ${props.className}` : "detail-section"}>
@@ -405,9 +710,9 @@ function DetailStat(props: { label: string; value: string }) {
   );
 }
 
-function formatResolution(width?: number, height?: number) {
+function formatResolution(width?: number, height?: number, mediaType?: string) {
   if (!width || !height) {
-    return "-";
+    return mediaType === "image" ? "尚未提取尺寸" : "尚未提取分辨率";
   }
   return `${width} × ${height}`;
 }

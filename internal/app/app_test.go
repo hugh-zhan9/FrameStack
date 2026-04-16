@@ -302,6 +302,20 @@ func TestSetVolumeScannerUpdatesHandlerDependencies(t *testing.T) {
 	}
 }
 
+func TestSetVolumeDeleterUpdatesHandlerDependencies(t *testing.T) {
+	application := app.New(config.Config{}, nil)
+	application.SetVolumeDeleter(staticVolumeDeleter{})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/volumes/7", nil)
+	rec := httptest.NewRecorder()
+
+	application.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
 func TestSetClusterSummaryProviderUpdatesHandlerDependencies(t *testing.T) {
 	application := app.New(config.Config{}, nil)
 	application.SetClusterSummaryProvider(staticClusterSummaryProvider{
@@ -567,6 +581,12 @@ func (staticVolumeScanner) EnqueueVolumeScan(_ context.Context, volumeID int64) 
 	return tasks.Job{ID: 1, JobType: "scan_volume", Status: "pending", TargetType: "volume", TargetID: volumeID}, nil
 }
 
+type staticVolumeDeleter struct{}
+
+func (staticVolumeDeleter) DeleteVolume(_ context.Context, _ int64) error {
+	return nil
+}
+
 type staticFileListProvider struct {
 	items []httpserver.FileDTO
 }
@@ -643,9 +663,17 @@ func (staticFileTagCreator) DeleteFileTag(_ context.Context, _ int64, _ httpserv
 	return nil
 }
 
+func (staticFileTagCreator) ReplaceFileTag(_ context.Context, _ int64, _ httpserver.FileTagReplaceRequest) error {
+	return nil
+}
+
 type staticFileJobRunner struct{}
 
 func (staticFileJobRunner) RecomputeFileEmbeddings(_ context.Context, _ int64, _ httpserver.FileRecomputeRequest) error {
+	return nil
+}
+
+func (staticFileJobRunner) GenerateFilePreview(_ context.Context, _ int64, _ httpserver.FileRecomputeRequest) error {
 	return nil
 }
 

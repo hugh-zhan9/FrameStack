@@ -18,7 +18,14 @@ func (s PostgresStore) UpsertManualTag(ctx context.Context, fileID int64, input 
 }
 
 func (s PostgresStore) DeleteManualTag(ctx context.Context, fileID int64, input DeleteInput) error {
-	return s.Execer.ExecContext(ctx, deleteManualFileTagQuery, fileID, input.Namespace, input.Name)
+	return s.Execer.ExecContext(ctx, deleteFileTagQuery, fileID, input.Namespace, input.Name)
+}
+
+func (s PostgresStore) ReplaceTag(ctx context.Context, fileID int64, input ReplaceInput) error {
+	if err := s.Execer.ExecContext(ctx, upsertTagQuery, input.Namespace, input.Name, input.DisplayName, input.Namespace == "sensitive"); err != nil {
+		return err
+	}
+	return s.Execer.ExecContext(ctx, replaceFileTagQuery, fileID, input.CurrentNamespace, input.CurrentName, input.Namespace, input.Name)
 }
 
 const upsertTagQuery = `
@@ -63,12 +70,45 @@ set
   evidence = excluded.evidence
 `
 
-const deleteManualFileTagQuery = `
+const deleteFileTagQuery = `
 delete from file_tags ft
 using tags t
 where ft.tag_id = t.id
   and ft.file_id = $1
-  and ft.source = 'human'
   and t.namespace = $2
   and t.name = $3
+`
+
+const replaceFileTagQuery = `
+with deleted as (
+  delete from file_tags ft
+  using tags old_tag
+  where ft.tag_id = old_tag.id
+    and ft.file_id = $1
+    and old_tag.namespace = $2
+    and old_tag.name = $3
+),
+selected_tag as (
+  select t.id
+  from tags t
+  where t.namespace = $4
+    and t.name = $5
+)
+insert into file_tags (
+  file_id,
+  tag_id,
+  source,
+  confidence,
+  evidence
+)
+select
+  $1,
+  st.id,
+  'human',
+  null,
+  '{"source":"manual"}'::jsonb
+from selected_tag st
+on conflict (file_id, tag_id, source) do update
+set
+  evidence = excluded.evidence
 `

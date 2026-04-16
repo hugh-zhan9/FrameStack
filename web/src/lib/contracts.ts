@@ -17,6 +17,10 @@ export type TaskSummary = {
   succeeded: number;
 };
 
+export type AIPromptSettings = {
+  understanding_extra_prompt: string;
+};
+
 export type ClusterSummary = {
   cluster_type: string;
   status: string;

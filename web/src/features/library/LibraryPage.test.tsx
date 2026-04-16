@@ -51,6 +51,8 @@ describe("LibraryPage", () => {
           qualityTier: "",
           status: "",
           reviewAction: "",
+          hasTags: "",
+          tag: "",
           sort: "updated_desc"
         }}
         onFiltersChange={() => {}}
@@ -60,7 +62,6 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("heading", { name: "资源库" })).toBeInTheDocument();
     expect(screen.getByText("sample-a.jpg")).toBeInTheDocument();
     expect(screen.getByText("sample-b.mp4")).toBeInTheDocument();
-    expect(screen.getByText("规格等级按分辨率、码率、帧率等技术指标粗分，不代表审美质量。")).toBeInTheDocument();
     expect(screen.getAllByText("可预览").length).toBeGreaterThan(0);
     expect(screen.getAllByText("图片").length).toBeGreaterThan(0);
     expect(screen.getAllByText("视频").length).toBeGreaterThan(0);
@@ -72,6 +73,8 @@ describe("LibraryPage", () => {
     expect(screen.queryByText("active")).not.toBeInTheDocument();
     expect(screen.getByLabelText("媒体类型筛选")).toBeInTheDocument();
     expect(screen.getByLabelText("技术规格等级筛选")).toBeInTheDocument();
+    expect(screen.getByLabelText("标签存在筛选")).toBeInTheDocument();
+    expect(screen.getByLabelText("标签筛选")).toBeInTheDocument();
     expect(screen.getByLabelText("排序方式")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "已忽略" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "加载更多" })).not.toBeInTheDocument();
@@ -101,6 +104,8 @@ describe("LibraryPage", () => {
           qualityTier: "",
           status: "",
           reviewAction: "",
+          hasTags: "",
+          tag: "",
           sort: "updated_desc"
         }}
         onFiltersChange={() => {}}

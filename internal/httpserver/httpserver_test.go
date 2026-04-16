@@ -163,6 +163,37 @@ func TestDirectoryPickerEndpointReturnsPath(t *testing.T) {
 	}
 }
 
+func TestAIPromptSettingsEndpointReturnsAndUpdatesSettings(t *testing.T) {
+	provider := &staticAIPromptSettingsProvider{
+		item: httpserver.AIPromptSettingsDTO{
+			UnderstandingExtraPrompt: "只输出中文标签",
+		},
+	}
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		AIPromptSettingsProvider: provider,
+	})
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/system/ai-prompt-settings", nil)
+	getRec := httptest.NewRecorder()
+	mux.ServeHTTP(getRec, getReq)
+
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected GET 200, got %d", getRec.Code)
+	}
+
+	postReq := httptest.NewRequest(http.MethodPost, "/api/system/ai-prompt-settings", strings.NewReader(`{"understanding_extra_prompt":"优先输出更具体的行为标签"}`))
+	postReq.Header.Set("Content-Type", "application/json")
+	postRec := httptest.NewRecorder()
+	mux.ServeHTTP(postRec, postReq)
+
+	if postRec.Code != http.StatusOK {
+		t.Fatalf("expected POST 200, got %d", postRec.Code)
+	}
+	if provider.updated.UnderstandingExtraPrompt != "优先输出更具体的行为标签" {
+		t.Fatalf("unexpected updated prompt settings: %#v", provider.updated)
+	}
+}
+
 func TestRootPageReturnsDashboardShell(t *testing.T) {
 	mux := httpserver.NewMux(httpserver.Dependencies{})
 
@@ -544,6 +575,25 @@ func TestVolumeScanEndpointInvokesProvider(t *testing.T) {
 	}
 }
 
+func TestVolumeDeleteEndpointInvokesProvider(t *testing.T) {
+	provider := &staticVolumeDeleter{}
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		VolumeDeleter: provider,
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/volumes/7", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	if provider.volumeID != 7 {
+		t.Fatalf("expected volume deleter to receive 7, got %d", provider.volumeID)
+	}
+}
+
 func TestFilesEndpointReturnsProviderFiles(t *testing.T) {
 	provider := staticFileListProvider{
 		items: []httpserver.FileDTO{
@@ -614,7 +664,7 @@ func TestFilesEndpointPassesStructuredFilters(t *testing.T) {
 		FileListProvider: &provider,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/files?q=poster&media_type=video&quality_tier=high&review_action=favorite&status=missing&volume_id=9&tag_namespace=content&tag=%E5%8D%95%E4%BA%BA%E5%86%99%E7%9C%9F&limit=6", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/files?q=poster&media_type=video&quality_tier=high&review_action=favorite&status=missing&volume_id=9&has_tags=true&tag_namespace=content&tag=%E5%8D%95%E4%BA%BA%E5%86%99%E7%9C%9F&limit=6", nil)
 	rec := httptest.NewRecorder()
 
 	mux.ServeHTTP(rec, req)
@@ -625,7 +675,7 @@ func TestFilesEndpointPassesStructuredFilters(t *testing.T) {
 	if provider.lastRequest.Query != "poster" {
 		t.Fatalf("unexpected query: %#v", provider.lastRequest)
 	}
-	if provider.lastRequest.MediaType != "video" || provider.lastRequest.QualityTier != "high" || provider.lastRequest.ReviewAction != "favorite" || provider.lastRequest.Status != "missing" || provider.lastRequest.VolumeID != 9 || provider.lastRequest.TagNamespace != "content" || provider.lastRequest.Tag != "单人写真" || provider.lastRequest.Limit != 6 {
+	if provider.lastRequest.MediaType != "video" || provider.lastRequest.QualityTier != "high" || provider.lastRequest.ReviewAction != "favorite" || provider.lastRequest.Status != "missing" || provider.lastRequest.VolumeID != 9 || provider.lastRequest.HasTags != "true" || provider.lastRequest.TagNamespace != "content" || provider.lastRequest.Tag != "单人写真" || provider.lastRequest.Limit != 6 {
 		t.Fatalf("unexpected request: %#v", provider.lastRequest)
 	}
 }
@@ -782,10 +832,10 @@ func TestClusterDetailEndpointReturnsDetail(t *testing.T) {
 	mux := httpserver.NewMux(httpserver.Dependencies{
 		ClusterDetailProvider: staticClusterDetailProvider{
 			item: httpserver.ClusterDetailDTO{
-				ClusterDTO: httpserver.ClusterDTO{ID: 7, ClusterType: "same_series", Title: "Series A", Status: "candidate", MemberCount: 2, StrongMemberCount: 1, TopMemberScore: float64Ptr(0.99)},
-				PersonVisualCount: 1,
+				ClusterDTO:         httpserver.ClusterDTO{ID: 7, ClusterType: "same_series", Title: "Series A", Status: "candidate", MemberCount: 2, StrongMemberCount: 1, TopMemberScore: float64Ptr(0.99)},
+				PersonVisualCount:  1,
 				GenericVisualCount: 0,
-				TopEvidenceType: "person_visual",
+				TopEvidenceType:    "person_visual",
 				Members: []httpserver.ClusterMemberDTO{
 					{FileID: 15, FileName: "a.jpg", MediaType: "image", Role: "cover", QualityTier: "high", HasFace: true, SubjectCount: "single", CaptureType: "selfie", EmbeddingType: "person_visual", EmbeddingProvider: "semantic", EmbeddingModel: "semantic-ollama-qwen3-vl-8b-v1", EmbeddingVectorCount: 1},
 				},
@@ -1054,6 +1104,33 @@ func TestReclusterFileEndpointInvokesProvider(t *testing.T) {
 	}
 }
 
+func TestGenerateFilePreviewEndpointInvokesProvider(t *testing.T) {
+	provider := &staticFileJobRunner{}
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		FileDetailProvider: staticFileDetailProvider{
+			item: httpserver.FileDetailDTO{
+				FileDTO: httpserver.FileDTO{ID: 7, MediaType: "video"},
+			},
+		},
+		FileJobRunner: provider,
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/files/7/generate-preview", nil)
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rec.Code)
+	}
+	if provider.previewFileID != 7 {
+		t.Fatalf("expected preview provider to receive 7, got %d", provider.previewFileID)
+	}
+	if provider.previewInput.MediaType != "video" {
+		t.Fatalf("expected video media type, got %#v", provider.previewInput)
+	}
+}
+
 func TestCreateFileTagEndpointInvokesProvider(t *testing.T) {
 	provider := &staticFileTagCreator{}
 	mux := httpserver.NewMux(httpserver.Dependencies{
@@ -1096,6 +1173,29 @@ func TestDeleteFileTagEndpointInvokesProvider(t *testing.T) {
 	}
 	if provider.deleted.Namespace != "person" || provider.deleted.Name != "alice" {
 		t.Fatalf("unexpected delete input: %#v", provider.deleted)
+	}
+}
+
+func TestReplaceFileTagEndpointInvokesProvider(t *testing.T) {
+	provider := &staticFileTagCreator{}
+	mux := httpserver.NewMux(httpserver.Dependencies{
+		FileTagCreator: provider,
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/api/files/7/tags", strings.NewReader(`{"current_namespace":"content","current_name":"室内","namespace":"content","name":"酒店场景","display_name":"酒店场景"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if provider.replacedFileID != 7 {
+		t.Fatalf("expected tag creator to receive 7, got %d", provider.replacedFileID)
+	}
+	if provider.replaced.CurrentName != "室内" || provider.replaced.Name != "酒店场景" {
+		t.Fatalf("unexpected replace input: %#v", provider.replaced)
 	}
 }
 
@@ -1198,6 +1298,22 @@ func (s staticDirectoryPicker) PickDirectory(_ context.Context) (string, error) 
 	return s.path, s.err
 }
 
+type staticAIPromptSettingsProvider struct {
+	item    httpserver.AIPromptSettingsDTO
+	updated httpserver.AIPromptSettingsDTO
+	err     error
+}
+
+func (s *staticAIPromptSettingsProvider) GetSettings(_ context.Context) (httpserver.AIPromptSettingsDTO, error) {
+	return s.item, s.err
+}
+
+func (s *staticAIPromptSettingsProvider) UpdateSettings(_ context.Context, input httpserver.AIPromptSettingsDTO) (httpserver.AIPromptSettingsDTO, error) {
+	s.updated = input
+	s.item = input
+	return s.item, s.err
+}
+
 type staticJobListProvider struct {
 	items []tasks.Job
 	err   error
@@ -1262,10 +1378,20 @@ func (s *staticVolumeScanner) EnqueueVolumeScan(_ context.Context, volumeID int6
 	return tasks.Job{ID: 11, JobType: "scan_volume", Status: "pending", TargetType: "volume", TargetID: volumeID}, s.err
 }
 
+type staticVolumeDeleter struct {
+	volumeID int64
+	err      error
+}
+
+func (s *staticVolumeDeleter) DeleteVolume(_ context.Context, volumeID int64) error {
+	s.volumeID = volumeID
+	return s.err
+}
+
 type staticFileListProvider struct {
 	items       []httpserver.FileDTO
-	nextCursor string
-	hasMore    bool
+	nextCursor  string
+	hasMore     bool
 	err         error
 	lastRequest httpserver.FileListRequest
 }
@@ -1374,11 +1500,13 @@ func (s *staticFileOpenProvider) OpenFile(_ context.Context, fileID int64) error
 }
 
 type staticFileTagCreator struct {
-	fileID        int64
-	input         httpserver.FileTagCreateRequest
-	deletedFileID int64
-	deleted       httpserver.FileTagDeleteRequest
-	err           error
+	fileID         int64
+	input          httpserver.FileTagCreateRequest
+	deletedFileID  int64
+	deleted        httpserver.FileTagDeleteRequest
+	replacedFileID int64
+	replaced       httpserver.FileTagReplaceRequest
+	err            error
 }
 
 func (s *staticFileTagCreator) CreateFileTag(_ context.Context, fileID int64, input httpserver.FileTagCreateRequest) error {
@@ -1393,9 +1521,17 @@ func (s *staticFileTagCreator) DeleteFileTag(_ context.Context, fileID int64, in
 	return s.err
 }
 
+func (s *staticFileTagCreator) ReplaceFileTag(_ context.Context, fileID int64, input httpserver.FileTagReplaceRequest) error {
+	s.replacedFileID = fileID
+	s.replaced = input
+	return s.err
+}
+
 type staticFileJobRunner struct {
 	embeddingFileID int64
 	embeddingInput  httpserver.FileRecomputeRequest
+	previewFileID   int64
+	previewInput    httpserver.FileRecomputeRequest
 	reclusterFileID int64
 	reclusterInput  httpserver.FileRecomputeRequest
 	err             error
@@ -1404,6 +1540,12 @@ type staticFileJobRunner struct {
 func (s *staticFileJobRunner) RecomputeFileEmbeddings(_ context.Context, fileID int64, input httpserver.FileRecomputeRequest) error {
 	s.embeddingFileID = fileID
 	s.embeddingInput = input
+	return s.err
+}
+
+func (s *staticFileJobRunner) GenerateFilePreview(_ context.Context, fileID int64, input httpserver.FileRecomputeRequest) error {
+	s.previewFileID = fileID
+	s.previewInput = input
 	return s.err
 }
 

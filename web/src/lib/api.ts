@@ -6,6 +6,7 @@ import type {
   FileDetail,
   JobEvent,
   JobItem,
+  AIPromptSettings,
   SystemStatus,
   TaskSummary,
   VolumeItem
@@ -25,6 +26,8 @@ export type FetchFilesOptions = {
   qualityTier?: string;
   status?: string;
   reviewAction?: string;
+  hasTags?: string;
+  tag?: string;
   sort?: string;
   cursor?: string;
 };
@@ -54,6 +57,12 @@ export async function fetchFiles(options: FetchFilesOptions = {}): Promise<FileL
   }
   if (options.reviewAction?.trim()) {
     search.set("review_action", options.reviewAction.trim());
+  }
+  if (options.hasTags?.trim()) {
+    search.set("has_tags", options.hasTags.trim());
+  }
+  if (options.tag?.trim()) {
+    search.set("tag", options.tag.trim());
   }
   if (options.cursor?.trim()) {
     search.set("cursor", options.cursor.trim());
@@ -86,8 +95,88 @@ export async function recomputeFileEmbeddings(fileId: number): Promise<void> {
   }
 }
 
+export async function generateFilePreview(fileId: number): Promise<void> {
+  const response = await fetch(`/api/files/${fileId}/generate-preview`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function createFileTag(input: {
+  fileId: number;
+  namespace: string;
+  name: string;
+  display_name?: string;
+}): Promise<void> {
+  const response = await fetch(`/api/files/${input.fileId}/tags`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      namespace: input.namespace,
+      name: input.name,
+      display_name: input.display_name?.trim() || undefined
+    })
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function deleteFileTag(input: { fileId: number; namespace: string; name: string }): Promise<void> {
+  const search = new URLSearchParams({
+    namespace: input.namespace,
+    name: input.name
+  });
+  const response = await fetch(`/api/files/${input.fileId}/tags?${search.toString()}`, {
+    method: "DELETE"
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function replaceFileTag(input: {
+  fileId: number;
+  current_namespace: string;
+  current_name: string;
+  namespace: string;
+  name: string;
+  display_name?: string;
+}): Promise<void> {
+  const response = await fetch(`/api/files/${input.fileId}/tags`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_namespace: input.current_namespace,
+      current_name: input.current_name,
+      namespace: input.namespace,
+      name: input.name,
+      display_name: input.display_name?.trim() || undefined
+    })
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
 export async function fetchSystemStatus(): Promise<SystemStatus> {
   return fetchJSON<SystemStatus>("/api/system-status");
+}
+
+export async function fetchAIPromptSettings(): Promise<AIPromptSettings> {
+  return fetchJSON<AIPromptSettings>("/api/system/ai-prompt-settings");
+}
+
+export async function updateAIPromptSettings(input: AIPromptSettings): Promise<AIPromptSettings> {
+  const response = await fetch("/api/system/ai-prompt-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+  return (await response.json()) as AIPromptSettings;
 }
 
 export async function pickDirectory(): Promise<string> {
@@ -125,6 +214,13 @@ export async function createVolume(input: { display_name: string; mount_path: st
 
 export async function scanVolume(volumeId: number): Promise<void> {
   const response = await fetch(`/api/volumes/${volumeId}/scan`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readError(response));
+  }
+}
+
+export async function deleteVolume(volumeId: number): Promise<void> {
+  const response = await fetch(`/api/volumes/${volumeId}`, { method: "DELETE" });
   if (!response.ok) {
     throw new Error(await readError(response));
   }

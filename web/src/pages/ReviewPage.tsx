@@ -2,6 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { applyClusterReviewAction, applyFileReviewAction, fetchClusterDetail, fetchClusters, updateClusterStatus } from "../lib/api";
 import type { ClusterDetail, ClusterItem, ClusterMember } from "../lib/contracts";
 
+const CLUSTER_TYPE_LABELS: Record<string, string> = {
+  same_content: "同内容聚类",
+  same_series: "同系列聚类",
+  same_person: "同人物聚类"
+};
+
+const CLUSTER_STATUS_LABELS: Record<string, string> = {
+  candidate: "候选中",
+  confirmed: "已确认",
+  ignored: "已忽略"
+};
+
 export function ReviewPage() {
   const [clusterType, setClusterType] = useState("same_content");
   const [clusters, setClusters] = useState<ClusterItem[]>([]);
@@ -75,8 +87,8 @@ export function ReviewPage() {
     return [
       { label: "成员数", value: `${detail.member_count}` },
       { label: "强候选", value: `${detail.strong_member_count ?? 0}` },
-      { label: "person visual", value: `${detail.person_visual_count ?? 0}` },
-      { label: "top score", value: detail.top_member_score?.toFixed(2) ?? "-" }
+      { label: "人物向量", value: `${detail.person_visual_count ?? 0}` },
+      { label: "最高得分", value: detail.top_member_score?.toFixed(2) ?? "-" }
     ];
   }, [detail]);
 
@@ -196,15 +208,15 @@ export function ReviewPage() {
               <h3>审核主视图</h3>
               <p className="page-subtitle">
                 {detail
-                  ? `${detail.cluster_type} / ${detail.status}`
+                  ? `${formatClusterType(detail.cluster_type)} / ${formatClusterStatus(detail.status)}`
                   : "选择一个候选聚类开始审核"}
               </p>
             </div>
             <div className="review-toolbar">
               <select value={clusterType} onChange={(e) => setClusterType(e.target.value)} className="library-search">
-                <option value="same_content">same_content</option>
-                <option value="same_series">same_series</option>
-                <option value="same_person">same_person</option>
+                <option value="same_content">同内容聚类</option>
+                <option value="same_series">同系列聚类</option>
+                <option value="same_person">同人物聚类</option>
               </select>
               <button
                 type="button"
@@ -236,7 +248,7 @@ export function ReviewPage() {
                     </span>
                     {cluster.cluster_type === "same_person" ? (
                       <small>
-                        person visual {cluster.person_visual_count ?? 0} · top score{" "}
+                        人物向量 {cluster.person_visual_count ?? 0} · 最高得分{" "}
                         {cluster.top_member_score?.toFixed(2) ?? "-"}
                       </small>
                     ) : null}
@@ -395,6 +407,22 @@ function labelForMemberRole(role: string) {
     default:
       return role;
   }
+}
+
+function formatClusterType(value?: string) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return "未识别聚类";
+  }
+  return CLUSTER_TYPE_LABELS[normalized] ?? normalized;
+}
+
+function formatClusterStatus(value?: string) {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return "未知状态";
+  }
+  return CLUSTER_STATUS_LABELS[normalized] ?? normalized;
 }
 
 function noticeForAction(action: "keep" | "favorite" | "trash_candidate") {

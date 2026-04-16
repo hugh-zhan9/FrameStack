@@ -22,34 +22,36 @@ type SystemStatusProvider interface {
 }
 
 type App struct {
-	config         config.Config
-	handler        http.Handler
-	migrator       Migrator
-	workerChecker  WorkerChecker
-	systemStatus   SystemStatusProvider
-	directoryPicker httpserver.DirectoryPicker
-	taskSummary    httpserver.TaskSummaryProvider
-	jobList        httpserver.JobListProvider
-	jobCreator     httpserver.JobCreator
-	jobRetrier     httpserver.JobRetrier
-	jobEvents      httpserver.JobEventListProvider
-	volumeList     httpserver.VolumeListProvider
-	volumeCreator  httpserver.VolumeCreator
-	volumeScanner  httpserver.VolumeScanner
-	tagList        httpserver.TagListProvider
-	clusterList    httpserver.ClusterListProvider
-	clusterDetail  httpserver.ClusterDetailProvider
-	clusterSummary httpserver.ClusterSummaryProvider
-	clusterReview  httpserver.ClusterReviewer
-	fileList       httpserver.FileListProvider
-	fileDetail     httpserver.FileDetailProvider
-	fileContent    httpserver.FileContentProvider
-	fileTrasher    httpserver.FileTrasher
-	fileRevealer   httpserver.FileRevealer
-	fileOpener     httpserver.FileOpener
-	fileReviewer   httpserver.FileReviewer
-	fileTagCreator httpserver.FileTagCreator
-	fileJobRunner  httpserver.FileJobRunner
+	config           config.Config
+	handler          http.Handler
+	migrator         Migrator
+	workerChecker    WorkerChecker
+	systemStatus     SystemStatusProvider
+	directoryPicker  httpserver.DirectoryPicker
+	aiPromptSettings httpserver.AIPromptSettingsProvider
+	taskSummary      httpserver.TaskSummaryProvider
+	jobList          httpserver.JobListProvider
+	jobCreator       httpserver.JobCreator
+	jobRetrier       httpserver.JobRetrier
+	jobEvents        httpserver.JobEventListProvider
+	volumeList       httpserver.VolumeListProvider
+	volumeCreator    httpserver.VolumeCreator
+	volumeScanner    httpserver.VolumeScanner
+	volumeDeleter    httpserver.VolumeDeleter
+	tagList          httpserver.TagListProvider
+	clusterList      httpserver.ClusterListProvider
+	clusterDetail    httpserver.ClusterDetailProvider
+	clusterSummary   httpserver.ClusterSummaryProvider
+	clusterReview    httpserver.ClusterReviewer
+	fileList         httpserver.FileListProvider
+	fileDetail       httpserver.FileDetailProvider
+	fileContent      httpserver.FileContentProvider
+	fileTrasher      httpserver.FileTrasher
+	fileRevealer     httpserver.FileRevealer
+	fileOpener       httpserver.FileOpener
+	fileReviewer     httpserver.FileReviewer
+	fileTagCreator   httpserver.FileTagCreator
+	fileJobRunner    httpserver.FileJobRunner
 }
 
 func New(cfg config.Config, migrator Migrator) *App {
@@ -105,6 +107,11 @@ func (a *App) SetDirectoryPicker(provider httpserver.DirectoryPicker) {
 	a.refreshHandler()
 }
 
+func (a *App) SetAIPromptSettingsProvider(provider httpserver.AIPromptSettingsProvider) {
+	a.aiPromptSettings = provider
+	a.refreshHandler()
+}
+
 func (a *App) SetTaskSummaryProvider(provider httpserver.TaskSummaryProvider) {
 	a.taskSummary = provider
 	a.refreshHandler()
@@ -142,6 +149,11 @@ func (a *App) SetVolumeCreator(provider httpserver.VolumeCreator) {
 
 func (a *App) SetVolumeScanner(provider httpserver.VolumeScanner) {
 	a.volumeScanner = provider
+	a.refreshHandler()
+}
+
+func (a *App) SetVolumeDeleter(provider httpserver.VolumeDeleter) {
+	a.volumeDeleter = provider
 	a.refreshHandler()
 }
 
@@ -217,30 +229,32 @@ func (a *App) SetFileJobRunner(provider httpserver.FileJobRunner) {
 
 func (a *App) refreshHandler() {
 	a.handler = httpserver.NewMux(httpserver.Dependencies{
-		FrontendDistDir:        a.config.FrontendDistDir,
-		SystemStatusProvider:   a.systemStatus,
-		DirectoryPicker:        a.directoryPicker,
-		TaskSummaryProvider:    a.taskSummary,
-		JobListProvider:        a.jobList,
-		JobCreator:             a.jobCreator,
-		JobRetrier:             a.jobRetrier,
-		JobEventListProvider:   a.jobEvents,
-		VolumeListProvider:     a.volumeList,
-		VolumeCreator:          a.volumeCreator,
-		VolumeScanner:          a.volumeScanner,
-		TagListProvider:        a.tagList,
-		ClusterListProvider:    a.clusterList,
-		ClusterDetailProvider:  a.clusterDetail,
-		ClusterSummaryProvider: a.clusterSummary,
-		ClusterReviewer:        a.clusterReview,
-		FileListProvider:       a.fileList,
-		FileDetailProvider:     a.fileDetail,
-		FileContentProvider:    a.fileContent,
-		FileTrasher:            a.fileTrasher,
-		FileRevealer:           a.fileRevealer,
-		FileOpener:             a.fileOpener,
-		FileReviewer:           a.fileReviewer,
-		FileTagCreator:         a.fileTagCreator,
-		FileJobRunner:          a.fileJobRunner,
+		FrontendDistDir:          a.config.FrontendDistDir,
+		SystemStatusProvider:     a.systemStatus,
+		DirectoryPicker:          a.directoryPicker,
+		AIPromptSettingsProvider: a.aiPromptSettings,
+		TaskSummaryProvider:      a.taskSummary,
+		JobListProvider:          a.jobList,
+		JobCreator:               a.jobCreator,
+		JobRetrier:               a.jobRetrier,
+		JobEventListProvider:     a.jobEvents,
+		VolumeListProvider:       a.volumeList,
+		VolumeCreator:            a.volumeCreator,
+		VolumeScanner:            a.volumeScanner,
+		VolumeDeleter:            a.volumeDeleter,
+		TagListProvider:          a.tagList,
+		ClusterListProvider:      a.clusterList,
+		ClusterDetailProvider:    a.clusterDetail,
+		ClusterSummaryProvider:   a.clusterSummary,
+		ClusterReviewer:          a.clusterReview,
+		FileListProvider:         a.fileList,
+		FileDetailProvider:       a.fileDetail,
+		FileContentProvider:      a.fileContent,
+		FileTrasher:              a.fileTrasher,
+		FileRevealer:             a.fileRevealer,
+		FileOpener:               a.fileOpener,
+		FileReviewer:             a.fileReviewer,
+		FileTagCreator:           a.fileTagCreator,
+		FileJobRunner:            a.fileJobRunner,
 	})
 }

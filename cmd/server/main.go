@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"idea/internal/aiprompts"
 	"idea/internal/app"
 	"idea/internal/clusterreview"
 	"idea/internal/clusters"
@@ -54,6 +55,11 @@ func main() {
 		RequireWorker:  cfg.RunJobWorker,
 		Worker:         workerHealthChecker,
 	}
+	application.SetAIPromptSettingsProvider(aiPromptSettingsProvider{
+		service: &aiprompts.Service{
+			Path: filepath.Join("tmp", "ai-prompt-settings.json"),
+		},
+	})
 
 	if cfg.EnableDatabase {
 		db, err := database.Open(cfg.DatabaseURL)
@@ -64,7 +70,7 @@ func main() {
 
 		migrator := database.NewRunner(db)
 		eventRecorder := tasks.PostgresJobEventRecorder{Execer: database.SQLExecer{DB: db}}
-		volumeStore := volumes.NewPostgresStoreFromDB(db, db)
+		volumeStore := volumes.NewPostgresStoreFromDB(db, db, db)
 		tagStore := tags.NewPostgresStoreFromDB(db)
 		clusterStore := clusters.NewPostgresStoreFromDB(db, database.SQLExecer{DB: db})
 		fileStore := files.NewPostgresStoreFromDB(db)
@@ -88,6 +94,7 @@ func main() {
 		application.SetJobEventListProvider(tasks.NewPostgresJobEventListProviderFromDB(db))
 		application.SetVolumeListProvider(volumeListProvider{store: volumeStore})
 		application.SetVolumeCreator(volumeCreator{store: volumeStore})
+		application.SetVolumeDeleter(volumeDeleter{store: volumeStore})
 		application.SetVolumeScanner(volumeScanner{
 			creator: tasks.EventRecordingJobCreator{
 				Creator:  tasks.NewPostgresJobCreatorFromDB(db),
@@ -131,6 +138,9 @@ func main() {
 		})
 		application.SetFileJobRunner(fileJobRunner{
 			understanding: understandingJobEnqueuer{
+				ensurer: tasks.NewPostgresJobEnsurerFromDB(db),
+			},
+			extraction: extractionJobEnqueuer{
 				ensurer: tasks.NewPostgresJobEnsurerFromDB(db),
 			},
 			embeddings: embeddingJobEnqueuer{
@@ -305,6 +315,14 @@ func (p volumeCreator) CreateVolume(ctx context.Context, input httpserver.Create
 	}, nil
 }
 
+type volumeDeleter struct {
+	store volumes.PostgresStore
+}
+
+func (p volumeDeleter) DeleteVolume(ctx context.Context, volumeID int64) error {
+	return p.store.DeleteVolume(ctx, volumeID)
+}
+
 type volumeScanner struct {
 	creator tasks.EventRecordingJobCreator
 }
@@ -386,19 +404,19 @@ func (p clusterListProvider) ListClusters(ctx context.Context, input httpserver.
 	result := make([]httpserver.ClusterDTO, 0, len(items))
 	for _, item := range items {
 		result = append(result, httpserver.ClusterDTO{
-			ID:          item.ID,
-			ClusterType: item.ClusterType,
-			Title:       item.Title,
-			Confidence:  item.Confidence,
-			Status:      item.Status,
-			CoverFileID: item.CoverFileID,
-			MemberCount: item.MemberCount,
-			StrongMemberCount: item.StrongMemberCount,
-			TopMemberScore: item.TopMemberScore,
-			PersonVisualCount: item.PersonVisualCount,
+			ID:                 item.ID,
+			ClusterType:        item.ClusterType,
+			Title:              item.Title,
+			Confidence:         item.Confidence,
+			Status:             item.Status,
+			CoverFileID:        item.CoverFileID,
+			MemberCount:        item.MemberCount,
+			StrongMemberCount:  item.StrongMemberCount,
+			TopMemberScore:     item.TopMemberScore,
+			PersonVisualCount:  item.PersonVisualCount,
 			GenericVisualCount: item.GenericVisualCount,
-			TopEvidenceType: item.TopEvidenceType,
-			CreatedAt:   item.CreatedAt,
+			TopEvidenceType:    item.TopEvidenceType,
+			CreatedAt:          item.CreatedAt,
 		})
 	}
 	return result, nil
@@ -415,16 +433,16 @@ func (p clusterDetailProvider) GetClusterDetail(ctx context.Context, clusterID i
 	}
 	result := httpserver.ClusterDetailDTO{
 		ClusterDTO: httpserver.ClusterDTO{
-			ID:          item.ID,
-			ClusterType: item.ClusterType,
-			Title:       item.Title,
-			Confidence:  item.Confidence,
-			Status:      item.Status,
-			CoverFileID: item.CoverFileID,
-			MemberCount: item.MemberCount,
+			ID:                item.ID,
+			ClusterType:       item.ClusterType,
+			Title:             item.Title,
+			Confidence:        item.Confidence,
+			Status:            item.Status,
+			CoverFileID:       item.CoverFileID,
+			MemberCount:       item.MemberCount,
 			StrongMemberCount: item.StrongMemberCount,
-			TopMemberScore: item.TopMemberScore,
-			CreatedAt:   item.CreatedAt,
+			TopMemberScore:    item.TopMemberScore,
+			CreatedAt:         item.CreatedAt,
 		},
 		PersonVisualCount:  item.PersonVisualCount,
 		GenericVisualCount: item.GenericVisualCount,
@@ -466,6 +484,38 @@ func (p clusterReviewer) UpdateClusterStatus(ctx context.Context, clusterID int6
 	return p.service.UpdateClusterStatus(ctx, clusterID, status)
 }
 
+type aiPromptSettingsProvider struct {
+	service *aiprompts.Service
+}
+
+func (p aiPromptSettingsProvider) GetSettings(ctx context.Context) (httpserver.AIPromptSettingsDTO, error) {
+	if p.service == nil {
+		return httpserver.AIPromptSettingsDTO{}, nil
+	}
+	item, err := p.service.GetSettings(ctx)
+	if err != nil {
+		return httpserver.AIPromptSettingsDTO{}, err
+	}
+	return httpserver.AIPromptSettingsDTO{
+		UnderstandingExtraPrompt: item.UnderstandingExtraPrompt,
+	}, nil
+}
+
+func (p aiPromptSettingsProvider) UpdateSettings(ctx context.Context, input httpserver.AIPromptSettingsDTO) (httpserver.AIPromptSettingsDTO, error) {
+	if p.service == nil {
+		return httpserver.AIPromptSettingsDTO{}, nil
+	}
+	item, err := p.service.UpdateSettings(ctx, aiprompts.Settings{
+		UnderstandingExtraPrompt: input.UnderstandingExtraPrompt,
+	})
+	if err != nil {
+		return httpserver.AIPromptSettingsDTO{}, err
+	}
+	return httpserver.AIPromptSettingsDTO{
+		UnderstandingExtraPrompt: item.UnderstandingExtraPrompt,
+	}, nil
+}
+
 type fileListProvider struct {
 	store files.PostgresStore
 }
@@ -481,6 +531,7 @@ func (p fileListProvider) ListFiles(ctx context.Context, input httpserver.FileLi
 		ReviewAction:  input.ReviewAction,
 		Status:        input.Status,
 		VolumeID:      input.VolumeID,
+		HasTags:       input.HasTags,
 		TagNamespace:  input.TagNamespace,
 		Tag:           input.Tag,
 		ClusterType:   input.ClusterType,
@@ -689,8 +740,19 @@ func (p fileTagCreator) DeleteFileTag(ctx context.Context, fileID int64, input h
 	})
 }
 
+func (p fileTagCreator) ReplaceFileTag(ctx context.Context, fileID int64, input httpserver.FileTagReplaceRequest) error {
+	return p.service.ReplaceFileTag(ctx, fileID, filetags.ReplaceInput{
+		CurrentNamespace: input.CurrentNamespace,
+		CurrentName:      input.CurrentName,
+		Namespace:        input.Namespace,
+		Name:             input.Name,
+		DisplayName:      input.DisplayName,
+	})
+}
+
 type fileJobRunner struct {
 	understanding understandingJobEnqueuer
+	extraction    extractionJobEnqueuer
 	embeddings    embeddingJobEnqueuer
 	sameContent   sameContentJobEnqueuer
 	sameSeries    sameSeriesJobEnqueuer
@@ -711,6 +773,13 @@ func (p fileJobRunner) RecomputeFileEmbeddings(ctx context.Context, fileID int64
 	}
 }
 
+func (p fileJobRunner) GenerateFilePreview(ctx context.Context, fileID int64, input httpserver.FileRecomputeRequest) error {
+	if input.MediaType != "video" {
+		return fmt.Errorf("preview generation only supports video, got %s", input.MediaType)
+	}
+	return p.extraction.EnqueueExtractVideoFeatures(ctx, fileID)
+}
+
 func (p fileJobRunner) ReclusterFile(ctx context.Context, fileID int64, _ httpserver.FileRecomputeRequest) error {
 	if err := p.sameContent.EnqueueSameContent(ctx, fileID); err != nil {
 		return err
@@ -723,6 +792,27 @@ func (p fileJobRunner) ReclusterFile(ctx context.Context, fileID int64, _ httpse
 
 type scannerJobEnqueuer struct {
 	ensurer tasks.PostgresJobEnsurer
+}
+
+type extractionJobEnqueuer struct {
+	ensurer tasks.PostgresJobEnsurer
+}
+
+func (e extractionJobEnqueuer) EnqueueExtractVideoFeatures(ctx context.Context, fileID int64) error {
+	payload, err := json.Marshal(map[string]int64{
+		"file_id": fileID,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = e.ensurer.EnsureJob(ctx, tasks.CreateJobInput{
+		JobType:    "extract_video_features",
+		Priority:   80,
+		TargetType: "file",
+		TargetID:   fileID,
+		Payload:    payload,
+	})
+	return err
 }
 
 func (e scannerJobEnqueuer) EnqueueFileProcessing(ctx context.Context, fileID int64, mediaType string) error {

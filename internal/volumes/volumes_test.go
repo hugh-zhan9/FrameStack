@@ -71,6 +71,34 @@ func TestPostgresStoreListVolumesReturnsQueryError(t *testing.T) {
 	}
 }
 
+func TestPostgresStoreDeleteVolumeRemovesVolumeAndFiles(t *testing.T) {
+	execer := &recordingExecer{}
+	store := volumes.PostgresStore{Execer: execer}
+
+	err := store.DeleteVolume(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("expected delete to succeed: %v", err)
+	}
+	if len(execer.args) != 1 || execer.args[0] != int64(7) {
+		t.Fatalf("unexpected delete args: %#v", execer.args)
+	}
+	if !strings.Contains(normalizeSQL(execer.query), normalizeSQL("delete from files")) {
+		t.Fatalf("expected file cleanup query, got %s", execer.query)
+	}
+	if !strings.Contains(normalizeSQL(execer.query), normalizeSQL("delete from volumes")) {
+		t.Fatalf("expected volume delete query, got %s", execer.query)
+	}
+}
+
+func TestPostgresStoreDeleteVolumeRejectsMissingID(t *testing.T) {
+	store := volumes.PostgresStore{}
+
+	err := store.DeleteVolume(context.Background(), 0)
+	if err == nil {
+		t.Fatal("expected delete to fail")
+	}
+}
+
 type recordingRowsQueryer struct {
 	query string
 	args  []any
@@ -97,6 +125,18 @@ func (r *recordingRowQueryer) QueryRowContext(_ context.Context, query string, a
 	r.query = query
 	r.args = args
 	return r.row
+}
+
+type recordingExecer struct {
+	query string
+	args  []any
+	err   error
+}
+
+func (r *recordingExecer) ExecContext(_ context.Context, query string, args ...any) error {
+	r.query = query
+	r.args = args
+	return r.err
 }
 
 type staticVolumeRows struct {

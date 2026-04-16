@@ -18,6 +18,10 @@ type CreateVolumeInput struct {
 	MountPath   string `json:"mount_path"`
 }
 
+type Execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) error
+}
+
 type RowScanner interface {
 	Scan(dest ...any) error
 }
@@ -45,15 +49,21 @@ type SQLRowsDB interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
+type SQLExecDB interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 type PostgresStore struct {
 	Queryer RowQueryer
 	Rows    RowsQueryer
+	Execer  Execer
 }
 
-func NewPostgresStoreFromDB(db SQLDB, rows SQLRowsDB) PostgresStore {
+func NewPostgresStoreFromDB(db SQLDB, rows SQLRowsDB, exec SQLExecDB) PostgresStore {
 	return PostgresStore{
 		Queryer: sqlRowQueryer{db: db},
 		Rows:    sqlRowsQueryer{db: rows},
+		Execer:  sqlExecer{db: exec},
 	}
 }
 
@@ -96,6 +106,16 @@ func (s PostgresStore) CreateVolume(ctx context.Context, input CreateVolumeInput
 	return item, nil
 }
 
+func (s PostgresStore) DeleteVolume(ctx context.Context, volumeID int64) error {
+	if volumeID <= 0 {
+		return errors.New("volume id is required")
+	}
+	if s.Execer == nil {
+		return errors.New("execer is required")
+	}
+	return s.Execer.ExecContext(ctx, deleteVolumeQuery, volumeID)
+}
+
 const listVolumesQuery = `
 select
   id,
@@ -120,6 +140,14 @@ returning
   is_online
 `
 
+const deleteVolumeQuery = `
+delete from files
+where volume_id = $1;
+
+delete from volumes
+where id = $1
+`
+
 type sqlRowQueryer struct {
 	db SQLDB
 }
@@ -134,4 +162,13 @@ type sqlRowsQueryer struct {
 
 func (q sqlRowsQueryer) QueryContext(ctx context.Context, query string, args ...any) (RowsScanner, error) {
 	return q.db.QueryContext(ctx, query, args...)
+}
+
+type sqlExecer struct {
+	db SQLExecDB
+}
+
+func (q sqlExecer) ExecContext(ctx context.Context, query string, args ...any) error {
+	_, err := q.db.ExecContext(ctx, query, args...)
+	return err
 }

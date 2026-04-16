@@ -189,7 +189,6 @@ select {
   border-radius: 1.35rem;
   background: var(--bg-panel);
   box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(16px);
 }
 
 .library-hero {
@@ -294,6 +293,10 @@ select {
   background: var(--bg-input);
 }
 
+.library-search-compact {
+  grid-column: auto;
+}
+
 .library-toolbar select {
   padding: 0.85rem 1rem;
   border: 1px solid var(--border-subtle);
@@ -321,8 +324,9 @@ select {
 }
 
 .media-grid {
-  column-width: 18rem;
-  column-gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 1rem;
 }
 
 .library-status-bar {
@@ -474,6 +478,32 @@ select {
   gap: 0.5rem;
 }
 
+.detail-tag-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.detail-tag-form input,
+.detail-tag-form select {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.85rem;
+  background: var(--bg-input);
+  color: var(--text-body);
+}
+
+.detail-tag-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.detail-tag-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -541,6 +571,7 @@ select {
   object-fit: cover;
   border-radius: 0.9rem;
   background: var(--bg-preview);
+  transform: translateZ(0);
 }
 
 .frame-card figcaption {
@@ -705,6 +736,34 @@ select {
   color: var(--text-body);
 }
 
+.task-job-card {
+  gap: 0.55rem;
+}
+
+.task-job-preview {
+  aspect-ratio: 16 / 10;
+  border-radius: 0.85rem;
+}
+
+.task-events-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin-bottom: 0.85rem;
+}
+
+.task-prompt-textarea {
+  min-height: 7rem;
+  width: 100%;
+  resize: vertical;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.9rem;
+  background: var(--bg-input);
+  color: var(--text-body);
+  font: inherit;
+}
+
 .review-item.active {
   outline: 2px solid var(--accent);
 }
@@ -816,6 +875,9 @@ select {
   overflow: hidden;
   cursor: pointer;
   break-inside: avoid;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 24rem;
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
 }
@@ -858,6 +920,7 @@ select {
   display: block;
   object-fit: contain;
   background: rgba(255, 255, 255, 0.4);
+  transform: translateZ(0);
 }
 
 .media-preview-fallback {
@@ -952,6 +1015,27 @@ select {
   flex-wrap: wrap;
 }
 
+.media-tag-editable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.media-tag-action,
+.media-tag-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.78rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.media-tag-remove {
+  font-size: 0.9rem;
+}
+
 .media-tag {
   padding: 0.28rem 0.5rem;
   border-radius: 999px;
@@ -959,6 +1043,90 @@ select {
   color: var(--accent-strong);
   font-size: 0.8rem;
   border: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+.media-tag-editor {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.media-tag-editor input,
+.media-tag-editor select {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.8rem;
+  background: var(--bg-input);
+  color: var(--text-body);
+}
+
+.detail-tag-list {
+  align-items: flex-start;
+}
+
+.detail-tag-editor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.95rem;
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.detail-tag-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+}
+
+.detail-tag-editor-header strong {
+  color: var(--text-strong);
+}
+
+.detail-tag-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.detail-tag-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.detail-tag-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.detail-tag-editor-form input,
+.detail-tag-editor-form select {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.85rem;
+  background: var(--bg-input);
+  color: var(--text-body);
+}
+
+@media (max-width: 1180px) {
+  .detail-tag-form-actions,
+  .detail-tag-editor-actions {
+    justify-content: stretch;
+  }
+
+  .detail-tag-form-actions .secondary-button,
+  .detail-tag-editor-actions .secondary-button {
+    flex: 1 1 10rem;
+  }
 }
 
 .detail-overview-grid {

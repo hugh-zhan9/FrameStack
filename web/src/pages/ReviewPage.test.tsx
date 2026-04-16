@@ -70,8 +70,9 @@ describe("ReviewPage", () => {
     await waitFor(() => expect(screen.getByText("人物候选组 A")).toBeInTheDocument());
     expect(screen.getByText("审核主视图")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "候选队列（1）" })).toBeInTheDocument();
-    expect(screen.getAllByText(/person visual/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/top score/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("option", { name: "同人物聚类" })).toBeInTheDocument();
+    expect(screen.getAllByText(/人物向量/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/最高得分/).length).toBeGreaterThan(0);
     expect(screen.getByText("当前第 1 组 / 共 1 组")).toBeInTheDocument();
     expect(screen.getByAltText("a.jpg-preview")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "确认分组" })).toBeInTheDocument();

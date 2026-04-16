@@ -103,6 +103,19 @@ def understand_media(
         return fallback
 
 
+def load_prompt_settings(env: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    values = os.environ if env is None else env
+    path = str(values.get("IDEA_AI_PROMPT_SETTINGS_PATH", "tmp/ai-prompt-settings.json")).strip()
+    if not path:
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def phash_to_vector(phash: str) -> str:
     values = []
     for char in str(phash or "").strip().lower():
@@ -369,7 +382,7 @@ def call_ollama(payload: dict[str, Any], env: dict[str, str], http_post_json: An
         "messages": [
             {
                 "role": "user",
-                "content": build_understanding_prompt(payload),
+                "content": build_understanding_prompt(payload, env),
                 "images": build_image_inputs(payload),
             }
         ],
@@ -402,7 +415,7 @@ def call_lm_studio(payload: dict[str, Any], env: dict[str, str], http_post_json:
         "messages": [
             {
                 "role": "user",
-                "content": build_lm_studio_content(payload, max_images=max_images, resize_max_edge=image_max_edge),
+                "content": build_lm_studio_content(payload, max_images=max_images, resize_max_edge=image_max_edge, env=env),
             }
         ],
     }
@@ -458,14 +471,14 @@ def normalize_understanding_result(payload: dict[str, Any], provider: str) -> di
     }
 
 
-def build_understanding_prompt(payload: dict[str, Any]) -> str:
+def build_understanding_prompt(payload: dict[str, Any], env: Optional[dict[str, str]] = None) -> str:
     media_type = str(payload.get("media_type", "unknown")).strip()
     file_path = str(payload.get("file_path", "")).strip()
     context = payload.get("context", {}) if isinstance(payload.get("context"), dict) else {}
     language = str(context.get("language", "zh-CN")).strip() or "zh-CN"
     max_tags = int(context.get("max_tags", 12) or 12)
     allow_sensitive_labels = bool(context.get("allow_sensitive_labels", False))
-    return (
+    prompt = (
         "你是本地离线媒体整理助手。"
         "请只返回一个 JSON 对象，字段必须包含 "
         "raw_tags, canonical_candidates, summary, sensitive_tags, quality_hints, structured_attributes, confidence。"
@@ -474,6 +487,9 @@ def build_understanding_prompt(payload: dict[str, Any]) -> str:
         "content 用于内容和场景语义；quality 用于清晰度、压缩、分辨率等；"
         "sensitive 用于敏感内容标签；person 用于可重复识别的人物外观候选标签，但不要编造真实身份姓名；"
         "management 仅用于明显的治理状态建议。"
+        "sensitive 标签必须具体到可观察的行为、暴露部位、道具或情境，例如 口交、阴道性交、肛交、自慰、乳房暴露、外阴暴露、颜射、束缚。"
+        "不要输出 敏感内容、成人内容、露骨、NSFW、做爱场景 这类过于宽泛的标签。"
+        "content 标签也不要只写 图片、视频、人物 这类信息量过低的泛标签，优先写更具体的场景或服饰，如 JK制服、酒店床上场景、暗调特写。"
         "如果画面里人物具有可重复辨识的外观特征，可以输出 1-3 个 person 标签，"
         "例如 长发女性候选、短发男性候选、纹身男性候选、双人组合候选。"
         "structured_attributes 尽量包含：media_type, subject_count, capture_type, orientation, has_face, is_sensitive。"
@@ -484,6 +500,10 @@ def build_understanding_prompt(payload: dict[str, Any]) -> str:
         f" language={language}; max_tags={max_tags}; media_type={media_type}; file_path={file_path};"
         f" allow_sensitive_labels={str(allow_sensitive_labels).lower()}."
     )
+    extra_prompt = str(load_prompt_settings(env).get("understanding_extra_prompt", "")).strip()
+    if extra_prompt:
+        prompt = f"{prompt} 额外规则：{extra_prompt}"
+    return prompt
 
 
 def build_image_inputs(
@@ -514,8 +534,9 @@ def build_lm_studio_content(
     payload: dict[str, Any],
     max_images: Optional[int] = None,
     resize_max_edge: Optional[int] = None,
+    env: Optional[dict[str, str]] = None,
 ) -> list[dict[str, Any]]:
-    content = [{"type": "text", "text": build_understanding_prompt(payload)}]
+    content = [{"type": "text", "text": build_understanding_prompt(payload, env=env)}]
     for encoded_item in build_image_inputs(payload, max_images=max_images, resize_max_edge=resize_max_edge):
         content.append({
             "type": "image_url",
@@ -724,12 +745,6 @@ def derive_canonical_candidates(raw_tags: list[str], structured_attributes: dict
             "confidence": confidence,
         })
 
-    media_type = string_value(structured_attributes.get("media_type")).lower()
-    if media_type == "video":
-        add("content", "视频", 0.7)
-    elif media_type == "image":
-        add("content", "图片", 0.7)
-
     subject_count = string_value(structured_attributes.get("subject_count")).lower()
     if subject_count in ("1", "single", "one"):
         add("content", "单人", 0.65)
@@ -740,12 +755,12 @@ def derive_canonical_candidates(raw_tags: list[str], structured_attributes: dict
 
     capture_type = string_value(structured_attributes.get("capture_type")).lower()
     if capture_type in ("closeup", "close_up", "close-up"):
-        add("content", "特写", 0.6)
+        add("content", "局部特写", 0.6)
     elif capture_type in ("selfie",):
         add("content", "自拍", 0.7)
 
-    if truthy_value(structured_attributes.get("is_sensitive")):
-        add("sensitive", "敏感内容", 0.75)
+    if truthy_value(structured_attributes.get("has_face")):
+        add("person", "露脸", 0.6)
 
     for tag in raw_tags:
         normalized = normalize_tag_candidate_name(tag)
@@ -761,16 +776,35 @@ def normalize_tag_candidate_name(tag: str) -> str:
     value = str(tag).strip()
     lowered = value.lower()
     mapping = {
-        "jk": "JK",
+        "jk": "JK制服",
         "glasses": "眼镜",
-        "straps": "束缚元素",
-        "darkmode": "暗色画面",
-        "dark mode": "暗色画面",
-        "closeup": "特写",
-        "close-up": "特写",
-        "close_up": "特写",
-        "video": "视频",
-        "image": "图片",
+        "straps": "束缚",
+        "bondage": "束缚",
+        "darkmode": "低光高对比",
+        "dark mode": "低光高对比",
+        "closeup": "局部特写",
+        "close-up": "局部特写",
+        "close_up": "局部特写",
+        "blowjob": "口交",
+        "oral": "口交",
+        "oral sex": "口交",
+        "cunnilingus": "舔阴",
+        "vaginal": "阴道性交",
+        "vaginal sex": "阴道性交",
+        "anal": "肛交",
+        "anal sex": "肛交",
+        "masturbation": "自慰",
+        "handjob": "手淫",
+        "cumshot": "射精镜头",
+        "facial": "颜射",
+        "pussy": "外阴暴露",
+        "vulva": "外阴暴露",
+        "breasts": "乳房暴露",
+        "boobs": "乳房暴露",
+        "lingerie": "内衣",
+        "uniform": "制服",
+        "video": "",
+        "image": "",
     }
     if lowered in mapping:
         return mapping[lowered]
@@ -780,10 +814,12 @@ def normalize_tag_candidate_name(tag: str) -> str:
 
 
 def infer_candidate_namespace(name: str) -> str:
-    if name in ("敏感内容", "成人视频", "成人内容", "性行为", "束缚元素"):
+    if name in ("口交", "舔阴", "阴道性交", "肛交", "自慰", "手淫", "乳房暴露", "外阴暴露", "颜射", "射精镜头", "束缚"):
         return "sensitive"
-    if name in ("暗色画面", "低照度", "模糊", "清晰"):
+    if name in ("低光高对比", "低照度", "模糊", "清晰"):
         return "quality"
+    if name in ("眼镜", "露脸"):
+        return "person"
     return "content"
 
 

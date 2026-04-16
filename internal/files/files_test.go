@@ -98,7 +98,7 @@ func TestPostgresStoreListFilesSupportsSearchQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(queryer.args) != 12 || queryer.args[0] != "poster jpg" || queryer.args[1] != "" || queryer.args[2] != "" || queryer.args[3] != "" || queryer.args[4] != "" || queryer.args[5] != int64(0) || queryer.args[6] != "" || queryer.args[7] != "" || queryer.args[8] != "" || queryer.args[9] != "" || queryer.args[10] != 11 || queryer.args[11] != 0 {
+	if len(queryer.args) != 13 || queryer.args[0] != "poster jpg" || queryer.args[1] != "" || queryer.args[2] != "" || queryer.args[3] != "" || queryer.args[4] != "" || queryer.args[5] != int64(0) || queryer.args[6] != "" || queryer.args[7] != "" || queryer.args[8] != "" || queryer.args[9] != "" || queryer.args[10] != "" || queryer.args[11] != 11 || queryer.args[12] != 0 {
 		t.Fatalf("unexpected query args: %#v", queryer.args)
 	}
 	normalized := normalizeSQL(queryer.query)
@@ -135,10 +135,10 @@ func TestPostgresStoreListFilesSupportsStructuredFilters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(queryer.args) != 12 {
-		t.Fatalf("expected 12 query args, got %#v", queryer.args)
+	if len(queryer.args) != 13 {
+		t.Fatalf("expected 13 query args, got %#v", queryer.args)
 	}
-	expectedArgs := []any{"poster", "image", "high", "favorite", "active", int64(7), "", "", "", "", 16, 0}
+	expectedArgs := []any{"poster", "image", "high", "favorite", "active", int64(7), "", "", "", "", "", 16, 0}
 	for i, expected := range expectedArgs {
 		if queryer.args[i] != expected {
 			t.Fatalf("unexpected arg %d: want %#v got %#v", i, expected, queryer.args[i])
@@ -155,7 +155,7 @@ func TestPostgresStoreListFilesSupportsStructuredFilters(t *testing.T) {
 		"and ($4 = '' or latest_review.action_type = $4)",
 		"and ($5 = '' or f.status = $5)",
 		"$6 = 0 or f.volume_id = $6",
-		"limit $11",
+		"limit $12",
 	}
 	for _, fragment := range expectedFragments {
 		if !strings.Contains(normalized, normalizeSQL(fragment)) {
@@ -179,21 +179,52 @@ func TestPostgresStoreListFilesSupportsTagFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(queryer.args) != 12 {
-		t.Fatalf("expected 12 query args, got %#v", queryer.args)
+	if len(queryer.args) != 13 {
+		t.Fatalf("expected 13 query args, got %#v", queryer.args)
 	}
-	if queryer.args[3] != "favorite" || queryer.args[6] != "content" || queryer.args[7] != "单人写真" {
+	if queryer.args[3] != "favorite" || queryer.args[7] != "content" || queryer.args[8] != "单人写真" {
 		t.Fatalf("unexpected tag arg: %#v", queryer.args)
 	}
 	normalized := normalizeSQL(queryer.query)
 	expectedFragments := []string{
+		"or ($7 = 'true' and exists (",
+		"or ($7 = 'false' and not exists (",
 		"exists (",
 		"from file_tags ft",
 		"join tags t on t.id = ft.tag_id",
-		"and ($7 = '' or t.namespace = $7)",
-		"and ($8 = '' or t.name = $8 or t.display_name = $8)",
-		"limit $11",
-		"offset $12",
+		"and ($8 = '' or t.namespace = $8)",
+		"and ($9 = '' or t.name = $9 or t.display_name = $9)",
+		"limit $12",
+		"offset $13",
+	}
+	for _, fragment := range expectedFragments {
+		if !strings.Contains(normalized, normalizeSQL(fragment)) {
+			t.Fatalf("expected query to contain %q, got %q", fragment, queryer.query)
+		}
+	}
+}
+
+func TestPostgresStoreListFilesSupportsHasTagsFilter(t *testing.T) {
+	queryer := &recordingRowsQueryer{
+		rows: &staticFileRows{},
+	}
+	store := files.PostgresStore{Rows: queryer}
+
+	_, err := store.ListFiles(context.Background(), files.ListOptions{
+		Limit:   10,
+		HasTags: "true",
+	})
+	if err != nil {
+		t.Fatalf("expected list files to succeed: %v", err)
+	}
+	if len(queryer.args) != 13 || queryer.args[6] != "true" {
+		t.Fatalf("unexpected query args: %#v", queryer.args)
+	}
+	normalized := normalizeSQL(queryer.query)
+	expectedFragments := []string{
+		"$7 = 'true' and exists (",
+		"$7 = 'false' and not exists (",
+		"from file_tags ft",
 	}
 	for _, fragment := range expectedFragments {
 		if !strings.Contains(normalized, normalizeSQL(fragment)) {
@@ -216,17 +247,17 @@ func TestPostgresStoreListFilesSupportsOffsetAndSort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(queryer.args) != 12 {
-		t.Fatalf("expected 12 query args, got %#v", queryer.args)
+	if len(queryer.args) != 13 {
+		t.Fatalf("expected 13 query args, got %#v", queryer.args)
 	}
-	if queryer.args[10] != 26 || queryer.args[11] != 50 {
+	if queryer.args[11] != 26 || queryer.args[12] != 50 {
 		t.Fatalf("unexpected paging args: %#v", queryer.args)
 	}
 	normalized := normalizeSQL(queryer.query)
 	expectedFragments := []string{
 		"order by f.size_bytes desc, f.id desc",
-		"limit $11",
-		"offset $12",
+		"limit $12",
+		"offset $13",
 	}
 	for _, fragment := range expectedFragments {
 		if !strings.Contains(normalized, normalizeSQL(fragment)) {
@@ -273,10 +304,10 @@ func TestPostgresStoreListFilesSupportsCursorForUpdatedSort(t *testing.T) {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
 	normalized := normalizeSQL(queryer.query)
-	if !strings.Contains(normalized, normalizeSQL("and (f.updated_at, f.id) < ($11::timestamptz, $12)")) {
+	if !strings.Contains(normalized, normalizeSQL("and (f.updated_at, f.id) < ($12::timestamptz, $13)")) {
 		t.Fatalf("expected updated cursor clause, got %q", queryer.query)
 	}
-	if len(queryer.args) != 14 || queryer.args[10] != "2026-04-13T12:00:00Z" || queryer.args[11] != int64(7) || queryer.args[12] != 26 || queryer.args[13] != 0 {
+	if len(queryer.args) != 15 || queryer.args[11] != "2026-04-13T12:00:00Z" || queryer.args[12] != int64(7) || queryer.args[13] != 26 || queryer.args[14] != 0 {
 		t.Fatalf("unexpected cursor args: %#v", queryer.args)
 	}
 }
@@ -301,10 +332,10 @@ func TestPostgresStoreListFilesSupportsCursorForQualitySort(t *testing.T) {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
 	normalized := normalizeSQL(queryer.query)
-	if !strings.Contains(normalized, normalizeSQL("and (coalesce(quality.quality_score, -1), f.updated_at, f.id) < ($11, $12::timestamptz, $13)")) {
+	if !strings.Contains(normalized, normalizeSQL("and (coalesce(quality.quality_score, -1), f.updated_at, f.id) < ($12, $13::timestamptz, $14)")) {
 		t.Fatalf("expected quality cursor clause, got %q", queryer.query)
 	}
-	if len(queryer.args) != 15 || queryer.args[10] != 82.0 || queryer.args[11] != "2026-04-13T12:00:00Z" || queryer.args[12] != int64(7) || queryer.args[13] != 11 || queryer.args[14] != 0 {
+	if len(queryer.args) != 16 || queryer.args[11] != 82.0 || queryer.args[12] != "2026-04-13T12:00:00Z" || queryer.args[13] != int64(7) || queryer.args[14] != 11 || queryer.args[15] != 0 {
 		t.Fatalf("unexpected cursor args: %#v", queryer.args)
 	}
 }
@@ -323,18 +354,18 @@ func TestPostgresStoreListFilesSupportsClusterFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected list files to succeed: %v", err)
 	}
-	if len(queryer.args) != 12 {
-		t.Fatalf("expected 12 query args, got %#v", queryer.args)
+	if len(queryer.args) != 13 {
+		t.Fatalf("expected 13 query args, got %#v", queryer.args)
 	}
-	if queryer.args[8] != "same_series" || queryer.args[9] != "candidate" {
+	if queryer.args[9] != "same_series" || queryer.args[10] != "candidate" {
 		t.Fatalf("unexpected cluster args: %#v", queryer.args)
 	}
 	normalized := normalizeSQL(queryer.query)
 	expectedFragments := []string{
 		"from cluster_members cm",
 		"join clusters c on c.id = cm.cluster_id",
-		"and ($9 = '' or c.cluster_type = $9)",
-		"and ($10 = '' or c.status = $10)",
+		"and ($10 = '' or c.cluster_type = $10)",
+		"and ($11 = '' or c.status = $11)",
 	}
 	for _, fragment := range expectedFragments {
 		if !strings.Contains(normalized, normalizeSQL(fragment)) {

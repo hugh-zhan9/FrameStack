@@ -338,6 +338,8 @@ class WorkerProtocolTest(unittest.TestCase):
         self.assertIn("allow_sensitive_labels=true", prompt)
         self.assertIn("默认都使用简体中文", prompt)
         self.assertIn("canonical_candidates 必须返回 1-5 个有效候选", prompt)
+        self.assertIn("例如 口交、阴道性交、肛交、自慰、乳房暴露、外阴暴露、颜射、束缚", prompt)
+        self.assertIn("不要输出 敏感内容、成人内容", prompt)
 
     def test_embed_media_semantic_builds_frame_vectors_for_video(self):
         def fake_http_post_json(url, body, headers, timeout):
@@ -468,11 +470,33 @@ class WorkerProtocolTest(unittest.TestCase):
         )
 
         self.assertEqual(["JK", "Glasses", "DarkMode"], payload["raw_tags"])
-        names = [item["name"] for item in payload["canonical_candidates"]]
-        self.assertIn("视频", names)
-        self.assertIn("单人", names)
-        self.assertIn("特写", names)
-        self.assertIn("敏感内容", names)
+        candidates = {f"{item['namespace']}:{item['name']}" for item in payload["canonical_candidates"]}
+        self.assertIn("content:单人", candidates)
+        self.assertIn("content:局部特写", candidates)
+        self.assertIn("content:JK制服", candidates)
+        self.assertIn("person:眼镜", candidates)
+        self.assertIn("quality:低光高对比", candidates)
+
+    def test_normalize_understanding_result_maps_specific_sensitive_behaviors(self):
+        payload = normalize_understanding_result(
+            {
+                "raw_tags": ["Blowjob", "Pussy", "Straps"],
+                "canonical_candidates": None,
+                "summary": "english summary",
+                "structured_attributes": {
+                    "media_type": "video",
+                    "is_sensitive": True,
+                },
+                "confidence": 0.85,
+            },
+            provider="lm_studio",
+        )
+
+        candidates = {f"{item['namespace']}:{item['name']}" for item in payload["canonical_candidates"]}
+        self.assertIn("sensitive:口交", candidates)
+        self.assertIn("sensitive:外阴暴露", candidates)
+        self.assertIn("sensitive:束缚", candidates)
+        self.assertNotIn("sensitive:敏感内容", candidates)
 
     def test_build_image_inputs_respects_max_images(self):
         from worker.main import build_image_inputs

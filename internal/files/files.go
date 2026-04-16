@@ -113,6 +113,7 @@ type ListOptions struct {
 	ReviewAction  string
 	Status        string
 	VolumeID      int64
+	HasTags       string
 	TagNamespace  string
 	Tag           string
 	ClusterType   string
@@ -196,6 +197,7 @@ func (s PostgresStore) ListFiles(ctx context.Context, options ListOptions) (List
 		options.ReviewAction,
 		options.Status,
 		options.VolumeID,
+		options.HasTags,
 		options.TagNamespace,
 		options.Tag,
 		options.ClusterType,
@@ -594,25 +596,38 @@ where (
     $6 = 0 or f.volume_id = $6
   )
   and (
-    $8 = ''
-    or exists (
+    $7 = ''
+    or ($7 = 'true' and exists (
       select 1
       from file_tags ft
-      join tags t on t.id = ft.tag_id
       where ft.file_id = f.id
-        and ($7 = '' or t.namespace = $7)
-        and ($8 = '' or t.name = $8 or t.display_name = $8)
-    )
+    ))
+    or ($7 = 'false' and not exists (
+      select 1
+      from file_tags ft
+      where ft.file_id = f.id
+    ))
   )
   and (
     $9 = ''
     or exists (
       select 1
+      from file_tags ft
+      join tags t on t.id = ft.tag_id
+      where ft.file_id = f.id
+        and ($8 = '' or t.namespace = $8)
+        and ($9 = '' or t.name = $9 or t.display_name = $9)
+    )
+  )
+  and (
+    $10 = ''
+    or exists (
+      select 1
       from cluster_members cm
       join clusters c on c.id = cm.cluster_id
       where cm.file_id = f.id
-        and ($9 = '' or c.cluster_type = $9)
-        and ($10 = '' or c.status = $10)
+        and ($10 = '' or c.cluster_type = $10)
+        and ($11 = '' or c.status = $11)
     )
   )
 %s
@@ -912,19 +927,19 @@ func buildCursorClause(options ListOptions) (string, []any, error) {
 	}
 	switch sortKey {
 	case "updated_desc":
-		return "and (f.updated_at, f.id) < ($11::timestamptz, $12)", []any{cursor.UpdatedAt, cursor.ID}, nil
+		return "and (f.updated_at, f.id) < ($12::timestamptz, $13)", []any{cursor.UpdatedAt, cursor.ID}, nil
 	case "size_desc":
-		return "and (f.size_bytes, f.id) < ($11, $12)", []any{cursor.SizeBytes, cursor.ID}, nil
+		return "and (f.size_bytes, f.id) < ($12, $13)", []any{cursor.SizeBytes, cursor.ID}, nil
 	case "size_asc":
-		return "and (f.size_bytes, f.id) > ($11, $12)", []any{cursor.SizeBytes, cursor.ID}, nil
+		return "and (f.size_bytes, f.id) > ($12, $13)", []any{cursor.SizeBytes, cursor.ID}, nil
 	case "name_asc":
-		return "and (f.file_name, f.id) > ($11, $12)", []any{cursor.FileName, cursor.ID}, nil
+		return "and (f.file_name, f.id) > ($12, $13)", []any{cursor.FileName, cursor.ID}, nil
 	case "quality_desc":
 		qualityKey := -1.0
 		if cursor.QualityKey != nil {
 			qualityKey = *cursor.QualityKey
 		}
-		return "and (coalesce(quality.quality_score, -1), f.updated_at, f.id) < ($11, $12::timestamptz, $13)", []any{qualityKey, cursor.UpdatedAt, cursor.ID}, nil
+		return "and (coalesce(quality.quality_score, -1), f.updated_at, f.id) < ($12, $13::timestamptz, $14)", []any{qualityKey, cursor.UpdatedAt, cursor.ID}, nil
 	default:
 		return "", nil, fmt.Errorf("unsupported sort %s", sortKey)
 	}
